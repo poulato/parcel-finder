@@ -152,16 +152,16 @@
     }
     function isMobile() { return window.innerWidth <= 640; }
 
-    var map = L.map('map', { maxZoom: 18 }).setView([35.0, 33.4], 9);
+    var map = L.map('map', { maxZoom: 19 }).setView([35.0, 33.4], 9);
 
     var topoBase = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-      { attribution: 'Esri', maxZoom: 18 }
+      { attribution: 'Esri', maxZoom: 19 }
     ).addTo(map);
 
     var satellite = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { attribution: 'Esri', maxZoom: 18 }
+      { attribution: 'Esri', maxZoom: 19 }
     );
 
     var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
