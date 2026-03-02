@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cyprus Parcel Finder</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; }
+
+    /* Sidebar */
+    #sidebar {
+      width: 280px; min-width: 280px;
+      background: #fff; border-right: 1px solid #e0e0e0;
+      padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto; z-index: 1000;
+    }
+    #sidebar h1 { font-size: 18px; color: #333; }
+    #sidebar label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 4px; }
+    #sidebar input, #sidebar select {
+      width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px;
+      font-size: 14px; outline: none; transition: border-color 0.2s;
+    }
+    #sidebar input:focus, #sidebar select:focus { border-color: #4a90d9; }
+    #sidebar .field { margin-bottom: 2px; }
+    #sidebar button {
+      width: 100%; padding: 10px; background: #4a90d9; color: #fff;
+      border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    #sidebar button:hover { background: #3a7bc8; }
+    #sidebar button:disabled { background: #aaa; cursor: not-allowed; }
+    #sidebar .error { color: #d32f2f; font-size: 13px; display: none; }
+    #sidebar .hint { color: #888; font-size: 12px; }
+
+    /* Details panel */
+    #details { display: none; margin-top: 8px; }
+    #details summary {
+      cursor: pointer; font-size: 13px; font-weight: 600; color: #555;
+      padding: 6px 0; user-select: none;
+    }
+    #details .detail-row { font-size: 13px; color: #444; padding: 3px 0; }
+    #details .detail-label { color: #888; }
+
+    /* Map */
+    #map { flex: 1; height: 100vh; }
+
+    /* Info box on map */
+    .info-box {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: rgba(255,255,255,0.95); border-radius: 8px;
+      padding: 12px 16px; font-size: 12px; line-height: 1.5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2); max-width: 220px;
+      display: none;
+    }
+    .info-box h3 { margin: 0 0 6px; font-size: 14px; }
+    .info-box .label { color: #666; }
+    .info-box .value { font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div id="sidebar">
+    <h1>Parcel Finder</h1>
+
+    <div class="field">
+      <label for="sheet">Sheet</label>
+      <input type="text" id="sheet" placeholder="e.g. 47" />
+    </div>
+    <div class="field">
+      <label for="plan">Plan</label>
+      <input type="text" id="plan" placeholder="e.g. 41" />
+    </div>
+    <div class="field">
+      <label for="parcel">Parcel Number</label>
+      <input type="text" id="parcel" placeholder="e.g. 190" />
+    </div>
+    <div class="field">
+      <label for="district">District (optional)</label>
+      <select id="district">
+        <option value="">Any</option>
+        <option value="1">Nicosia (Lefkosia)</option>
+        <option value="5">Limassol (Lemesos)</option>
+        <option value="4">Larnaca (Larnaka)</option>
+        <option value="6">Paphos (Pafos)</option>
+        <option value="2">Famagusta (Ammochostos)</option>
+        <option value="3">Kyrenia (Keryneia)</option>
+      </select>
+    </div>
+
+    <button id="searchBtn" onclick="doSearch()">Find Parcel</button>
+    <div class="error" id="errorMsg"></div>
+
+    <details id="details">
+      <summary>Parcel Details</summary>
+      <div id="detailsContent"></div>
+    </details>
+
+    <div class="hint" id="shareHint" style="display:none;">
+      The URL in your browser is the shareable link.
+    </div>
+  </div>
+
+  <div id="map"></div>
+  <div class="info-box" id="infoBox"></div>
+
+  <script>
+    var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
+
+    var map = L.map('map', { maxZoom: 18 }).setView([35.0, 33.4], 9);
+
+    var topoBase = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Esri', maxZoom: 18 }
+    ).addTo(map);
+
+    var satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Esri', maxZoom: 18 }
+    );
+
+    var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1 }).addTo(map);
+
+    L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }).addTo(map);
+
+    var parcelLayer = null;
+
+    function showError(msg) {
+      var el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    function dlsQuery(layerId, params) {
+      params.f = 'json';
+      var qs = Object.keys(params).map(function(k) {
+        return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+      }).join('&');
+      return fetch(DLS_BASE + '/' + layerId + '/query?' + qs).then(function(r) { return r.json(); });
+    }
+
+    function findParcel(sheet, plan, parcelNbr, distCode) {
+      var where = "PARCEL_NBR=" + parcelNbr + " AND SHEET='" + sheet + "' AND PLAN_NBR='" + plan + "'";
+      if (distCode) where += " AND DIST_CODE=" + distCode;
+      return dlsQuery(0, {
+        where: where,
+        outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
+        returnGeometry: 'true',
+        outSR: '4326'
+      });
+    }
+
+    function spatialLookup(layerId, outFields, lat, lng) {
+      return dlsQuery(layerId, {
+        geometry: lng + ',' + lat,
+        geometryType: 'esriGeometryPoint',
+        inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: outFields,
+        returnGeometry: 'false'
+      });
+    }
+
+    function enrich(lat, lng) {
+      return Promise.all([
+        spatialLookup(12, 'PLNZNT_NAME,PLNZNT_DESC', lat, lng),
+        spatialLookup(16, 'VIL_NM_E', lat, lng),
+        spatialLookup(15, 'DIST_NM_E', lat, lng)
+      ]).then(function(results) {
+        var zone = results[0].features && results[0].features[0] ? results[0].features[0].attributes : {};
+        var muni = results[1].features && results[1].features[0] ? results[1].features[0].attributes : {};
+        var dist = results[2].features && results[2].features[0] ? results[2].features[0].attributes : {};
+        return {
+          planning_zone: zone.PLNZNT_NAME || '—',
+          planning_zone_desc: zone.PLNZNT_DESC || '—',
+          municipality: muni.VIL_NM_E || '—',
+          district: dist.DIST_NM_E || '—'
+        };
+      });
+    }
+
+    function centroid(rings) {
+      var ring = rings[0], n = ring.length, latSum = 0, lngSum = 0;
+      for (var i = 0; i < n; i++) { latSum += ring[i][1]; lngSum += ring[i][0]; }
+      return [latSum / n, lngSum / n];
+    }
+
+    function showParcel(feature, extra) {
+      if (parcelLayer) { map.removeLayer(parcelLayer); }
+
+      var attrs = feature.attributes;
+      var rings = feature.geometry.rings;
+      var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
+      var center = centroid(rings);
+
+      parcelLayer = L.polygon(coords, {
+        color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
+      }).addTo(map);
+
+      parcelLayer.bindPopup(
+        '<b>Parcel ' + attrs.PARCEL_NBR + '</b><br>' +
+        attrs.SHEET + ' / ' + attrs.PLAN_NBR + '<br>' +
+        extra.municipality
+      );
+
+      map.fitBounds(parcelLayer.getBounds().pad(0.3));
+
+      // Info box
+      var infoBox = document.getElementById('infoBox');
+      infoBox.innerHTML =
+        '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
+        '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
+        '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
+        '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>';
+      infoBox.style.display = 'block';
+
+      // Details panel
+      var detailsEl = document.getElementById('details');
+      var content = document.getElementById('detailsContent');
+      var rows = [
+        ['Parcel', attrs.PARCEL_NBR],
+        ['Sheet / Plan', attrs.SHEET + ' / ' + attrs.PLAN_NBR],
+        ['Block', attrs.BLCK_CODE || '—'],
+        ['District', extra.district],
+        ['Municipality', extra.municipality],
+        ['Planning Zone', extra.planning_zone + ' (' + extra.planning_zone_desc + ')']
+      ];
+      content.innerHTML = rows.map(function(r) {
+        return '<div class="detail-row"><span class="detail-label">' + r[0] + ':</span> ' + r[1] + '</div>';
+      }).join('');
+      detailsEl.style.display = 'block';
+
+      document.getElementById('shareHint').style.display = 'block';
+    }
+
+    function updateURL(sheet, plan, parcelNbr, distCode) {
+      var params = new URLSearchParams();
+      params.set('sheet', sheet);
+      params.set('plan', plan);
+      params.set('parcel', parcelNbr);
+      if (distCode) params.set('district', distCode);
+      history.replaceState(null, '', '?' + params.toString());
+    }
+
+    function doSearch() {
+      var sheet = document.getElementById('sheet').value.trim();
+      var plan = document.getElementById('plan').value.trim();
+      var parcelNbr = document.getElementById('parcel').value.trim();
+      var distCode = document.getElementById('district').value;
+
+      showError('');
+
+      if (!sheet || !plan || !parcelNbr) {
+        showError('Fill in Sheet, Plan, and Parcel.');
+        return;
+      }
+
+      var btn = document.getElementById('searchBtn');
+      btn.disabled = true;
+      btn.textContent = 'Searching...';
+
+      findParcel(sheet, plan, parcelNbr, distCode)
+        .then(function(data) {
+          var features = data.features || [];
+          if (!features.length) {
+            showError('No parcel found. Check the values.');
+            btn.disabled = false;
+            btn.textContent = 'Find Parcel';
+            return;
+          }
+          var feature = features[0];
+          var center = centroid(feature.geometry.rings);
+          updateURL(sheet, plan, parcelNbr, distCode);
+
+          return enrich(center[0], center[1]).then(function(extra) {
+            showParcel(feature, extra);
+            btn.disabled = false;
+            btn.textContent = 'Find Parcel';
+          });
+        })
+        .catch(function(err) {
+          showError('DLS query failed: ' + err.message);
+          btn.disabled = false;
+          btn.textContent = 'Find Parcel';
+        });
+    }
+
+    function loadFromURL() {
+      var params = new URLSearchParams(window.location.search);
+      var sheet = params.get('sheet');
+      var plan = params.get('plan');
+      var parcelNbr = params.get('parcel');
+      var distCode = params.get('district');
+
+      if (sheet && plan && parcelNbr) {
+        document.getElementById('sheet').value = sheet;
+        document.getElementById('plan').value = plan;
+        document.getElementById('parcel').value = parcelNbr;
+        if (distCode) document.getElementById('district').value = distCode;
+        doSearch();
+      }
+    }
+
+    // Allow Enter key to trigger search
+    document.querySelectorAll('#sidebar input').forEach(function(el) {
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+      });
+    });
+
+    loadFromURL();
+  </script>
+</body>
+</html>
