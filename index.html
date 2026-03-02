@@ -109,6 +109,7 @@
     </div>
 
     <button id="searchBtn" onclick="doSearch()">Find Parcel</button>
+    <button id="clearBtn" onclick="doClear()" style="display:none; width:100%; padding:10px; background:#eee; color:#333; border:none; border-radius:6px; font-size:14px; cursor:pointer; margin-top:-8px;">Clear</button>
     <div class="error" id="errorMsg"></div>
 
     <details id="details">
@@ -266,6 +267,22 @@
       detailsEl.style.display = 'block';
 
       document.getElementById('shareHint').style.display = 'block';
+      document.getElementById('clearBtn').style.display = 'block';
+    }
+
+    function doClear() {
+      if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
+      document.getElementById('infoBox').style.display = 'none';
+      document.getElementById('details').style.display = 'none';
+      document.getElementById('shareHint').style.display = 'none';
+      document.getElementById('clearBtn').style.display = 'none';
+      document.getElementById('sheet').value = '';
+      document.getElementById('plan').value = '';
+      document.getElementById('parcel').value = '';
+      document.getElementById('district').value = '';
+      showError('');
+      history.replaceState(null, '', window.location.pathname);
+      map.setView([35.0, 33.4], 9);
     }
 
     function updateURL(sheet, plan, parcelNbr, distCode) {
