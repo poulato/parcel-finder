@@ -11,36 +11,22 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; }
 
-    /* Sidebar */
     #sidebar {
       width: 280px; min-width: 280px;
       background: #fff; border-right: 1px solid #e0e0e0;
       padding: 20px; display: flex; flex-direction: column; gap: 16px;
       overflow-y: auto; z-index: 1001;
-      transition: transform 0.25s ease;
+      transition: margin-left 0.25s ease;
     }
-    #sidebar.hidden { transform: translateX(-100%); position: absolute; height: 100vh; }
+    #sidebar.hidden { margin-left: -280px; }
 
-    /* Toggle button — top right, above map */
-    #toggleBtn {
-      position: absolute; top: 10px; right: 10px; z-index: 1002;
-      width: 40px; height: 40px; border-radius: 8px; border: none;
-      background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      font-size: 20px; cursor: pointer; line-height: 40px; text-align: center;
+    #sidebar h1 { font-size: 18px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+    #sidebar h1 .close-btn {
+      background: none; border: none; font-size: 20px; cursor: pointer;
+      color: #888; padding: 0 4px; line-height: 1;
     }
-    #sidebar.hidden ~ #toggleBtn .close-icon { display: none; }
-    #sidebar.hidden ~ #toggleBtn .open-icon { display: inline; }
-    #sidebar:not(.hidden) ~ #toggleBtn .close-icon { display: inline; }
-    #sidebar:not(.hidden) ~ #toggleBtn .open-icon { display: none; }
+    #sidebar h1 .close-btn:hover { color: #333; }
 
-    .info-box { top: 60px; }
-
-    @media (max-width: 640px) {
-      #sidebar {
-        position: absolute; height: 100vh; width: 280px; min-width: 0;
-      }
-    }
-    #sidebar h1 { font-size: 18px; color: #333; }
     #sidebar label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 4px; }
     #sidebar input, #sidebar select {
       width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px;
@@ -48,29 +34,33 @@
     }
     #sidebar input:focus, #sidebar select:focus { border-color: #4a90d9; }
     #sidebar .field { margin-bottom: 2px; }
-    #sidebar button {
+    #searchBtn {
       width: 100%; padding: 10px; background: #4a90d9; color: #fff;
       border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
       cursor: pointer; transition: background 0.2s;
     }
-    #sidebar button:hover { background: #3a7bc8; }
-    #sidebar button:disabled { background: #aaa; cursor: not-allowed; }
-    #sidebar .error { color: #d32f2f; font-size: 13px; display: none; }
-    #sidebar .hint { color: #888; font-size: 12px; }
+    #searchBtn:hover { background: #3a7bc8; }
+    #searchBtn:disabled { background: #aaa; cursor: not-allowed; }
+    .error { color: #d32f2f; font-size: 13px; display: none; }
+    .hint { color: #888; font-size: 12px; }
 
-    /* Details panel */
     #details { display: none; margin-top: 8px; }
-    #details summary {
-      cursor: pointer; font-size: 13px; font-weight: 600; color: #555;
-      padding: 6px 0; user-select: none;
-    }
+    #details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #555; padding: 6px 0; user-select: none; }
     #details .detail-row { font-size: 13px; color: #444; padding: 3px 0; }
     #details .detail-label { color: #888; }
 
-    /* Map */
-    #map { flex: 1; height: 100vh; }
+    /* Map area */
+    #map-wrap { flex: 1; position: relative; }
+    #map { width: 100%; height: 100vh; }
 
-    /* Info box on map */
+    /* Open sidebar button — inside map area, top-left */
+    #openBtn {
+      display: none; position: absolute; top: 10px; left: 10px; z-index: 1002;
+      width: 40px; height: 40px; border-radius: 8px; border: none;
+      background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      font-size: 20px; cursor: pointer; line-height: 40px; text-align: center;
+    }
+
     .info-box {
       position: absolute; top: 10px; right: 10px; z-index: 1000;
       background: rgba(255,255,255,0.95); border-radius: 8px;
@@ -81,13 +71,17 @@
     .info-box h3 { margin: 0 0 6px; font-size: 14px; }
     .info-box .label { color: #666; }
     .info-box .value { font-weight: 600; }
+
+    @media (max-width: 640px) {
+      #sidebar { position: absolute; height: 100vh; z-index: 1001; }
+      #sidebar.hidden { margin-left: -280px; }
+    }
   </style>
 </head>
 <body>
 
-  <button id="toggleBtn" onclick="toggleSidebar()"><span class="open-icon">&#9776;</span><span class="close-icon">&#10005;</span></button>
   <div id="sidebar">
-    <h1>Parcel Finder</h1>
+    <h1>Parcel Finder <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button></h1>
 
     <div class="field">
       <label for="sheet">Sheet</label>
@@ -127,26 +121,29 @@
     </div>
   </div>
 
-  <div id="map"></div>
-  <div class="info-box" id="infoBox"></div>
+  <div id="map-wrap">
+    <button id="openBtn" onclick="openSidebar()" title="Show search panel">&#9776;</button>
+    <div id="map"></div>
+    <div class="info-box" id="infoBox"></div>
+  </div>
 
   <script>
     var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
 
-    function isMobile() { return window.innerWidth <= 640; }
+    var sidebar = document.getElementById('sidebar');
+    var openBtn = document.getElementById('openBtn');
 
-    function toggleSidebar() {
-      var sb = document.getElementById('sidebar');
-      sb.classList.toggle('hidden');
+    function closeSidebar() {
+      sidebar.classList.add('hidden');
+      openBtn.style.display = 'block';
       setTimeout(function() { map.invalidateSize(); }, 300);
     }
-
-    function hideSidebarOnMobile() {
-      if (isMobile()) {
-        document.getElementById('sidebar').classList.add('hidden');
-        setTimeout(function() { map.invalidateSize(); }, 300);
-      }
+    function openSidebar() {
+      sidebar.classList.remove('hidden');
+      openBtn.style.display = 'none';
+      setTimeout(function() { map.invalidateSize(); }, 300);
     }
+    function isMobile() { return window.innerWidth <= 640; }
 
     var map = L.map('map', { maxZoom: 18 }).setView([35.0, 33.4], 9);
 
@@ -232,7 +229,6 @@
       var attrs = feature.attributes;
       var rings = feature.geometry.rings;
       var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
-      var center = centroid(rings);
 
       parcelLayer = L.polygon(coords, {
         color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
@@ -246,7 +242,6 @@
 
       map.fitBounds(parcelLayer.getBounds().pad(0.3));
 
-      // Info box
       var infoBox = document.getElementById('infoBox');
       infoBox.innerHTML =
         '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
@@ -255,7 +250,6 @@
         '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>';
       infoBox.style.display = 'block';
 
-      // Details panel
       var detailsEl = document.getElementById('details');
       var content = document.getElementById('detailsContent');
       var rows = [
@@ -317,7 +311,7 @@
             showParcel(feature, extra);
             btn.disabled = false;
             btn.textContent = 'Find Parcel';
-            hideSidebarOnMobile();
+            if (isMobile()) closeSidebar();
           });
         })
         .catch(function(err) {
@@ -339,12 +333,11 @@
         document.getElementById('plan').value = plan;
         document.getElementById('parcel').value = parcelNbr;
         if (distCode) document.getElementById('district').value = distCode;
-        if (isMobile()) document.getElementById('sidebar').classList.add('hidden');
+        if (isMobile()) { sidebar.classList.add('hidden'); openBtn.style.display = 'block'; }
         doSearch();
       }
     }
 
-    // Allow Enter key to trigger search
     document.querySelectorAll('#sidebar input').forEach(function(el) {
       el.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
