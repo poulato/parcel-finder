@@ -13,26 +13,28 @@
 
     #sidebar {
       width: 280px; min-width: 280px;
-      background: #fff; border-right: 1px solid #e0e0e0;
+      background: #1e293b; border-right: none;
       padding: 20px; display: flex; flex-direction: column; gap: 16px;
       overflow-y: auto; z-index: 1001;
       transition: margin-left 0.25s ease;
     }
     #sidebar.hidden { margin-left: -280px; }
 
-    #sidebar h1 { font-size: 18px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+    #sidebar h1 { font-size: 18px; color: #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
     #sidebar h1 .close-btn {
       background: none; border: none; font-size: 20px; cursor: pointer;
-      color: #888; padding: 0 4px; line-height: 1;
+      color: #94a3b8; padding: 0 4px; line-height: 1;
     }
-    #sidebar h1 .close-btn:hover { color: #333; }
+    #sidebar h1 .close-btn:hover { color: #f1f5f9; }
 
-    #sidebar label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 4px; }
+    #sidebar label { display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
     #sidebar input, #sidebar select {
-      width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px;
+      width: 100%; padding: 8px 10px; border: 1px solid #334155; border-radius: 6px;
       font-size: 14px; outline: none; transition: border-color 0.2s;
+      background: #0f172a; color: #f1f5f9;
     }
-    #sidebar input:focus, #sidebar select:focus { border-color: #4a90d9; }
+    #sidebar input::placeholder { color: #64748b; }
+    #sidebar input:focus, #sidebar select:focus { border-color: #3b82f6; }
     #sidebar .field { margin-bottom: 2px; }
     #searchBtn {
       width: 100%; padding: 10px; background: #4a90d9; color: #fff;
@@ -41,13 +43,13 @@
     }
     #searchBtn:hover { background: #3a7bc8; }
     #searchBtn:disabled { background: #aaa; cursor: not-allowed; }
-    .error { color: #d32f2f; font-size: 13px; display: none; }
-    .hint { color: #888; font-size: 12px; }
+    .error { color: #f87171; font-size: 13px; display: none; }
+    .hint { color: #64748b; font-size: 12px; }
 
     #details { display: none; margin-top: 8px; }
-    #details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #555; padding: 6px 0; user-select: none; }
-    #details .detail-row { font-size: 13px; color: #444; padding: 3px 0; }
-    #details .detail-label { color: #888; }
+    #details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #94a3b8; padding: 6px 0; user-select: none; }
+    #details .detail-row { font-size: 13px; color: #cbd5e1; padding: 3px 0; }
+    #details .detail-label { color: #64748b; }
 
     /* Map area */
     #map-wrap { flex: 1; position: relative; }
@@ -109,7 +111,7 @@
     </div>
 
     <button id="searchBtn" onclick="doSearch()">Find Parcel</button>
-    <button id="clearBtn" onclick="doClear()" style="display:none; width:100%; padding:10px; background:#eee; color:#333; border:none; border-radius:6px; font-size:14px; cursor:pointer; margin-top:-8px;">Clear</button>
+    <button id="clearBtn" onclick="doClear()" style="display:none; width:100%; padding:10px; background:#334155; color:#cbd5e1; border:none; border-radius:6px; font-size:14px; cursor:pointer; margin-top:-8px;">Clear</button>
     <div class="error" id="errorMsg"></div>
 
     <details id="details">
