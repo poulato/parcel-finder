@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cyprus Parcel Finder</title>
+  <title>Geoktimonas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
@@ -31,10 +31,26 @@
       justify-content: space-between;
       padding: 0 16px;
     }
-    #headerLeft { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    #headerTitle {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #headerIcon {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: rgba(148, 163, 184, 0.18);
+      font-size: 13px;
+      line-height: 1;
+    }
     #headerRight { display: flex; align-items: center; }
-    #appHeader .title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
-    #appHeader .subtitle { font-size: 12px; color: #94a3b8; }
 
     #sidebar {
       width: 280px; min-width: 280px;
@@ -45,10 +61,19 @@
     }
     #sidebar.hidden { margin-left: -280px; }
 
-    #sidebar h1 { font-size: 18px; color: #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+    #sidebar h1 {
+      font-size: 16px;
+      color: #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 0 4px 0;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #334155;
+    }
     #sidebar h1 .close-btn {
       background: none; border: none; font-size: 20px; cursor: pointer;
-      color: #94a3b8; padding: 0 4px; line-height: 1;
+      color: #94a3b8; padding: 0 2px; line-height: 1;
     }
     #sidebar h1 .close-btn:hover { color: #f1f5f9; }
 
@@ -192,9 +217,9 @@
 </head>
 <body>
   <header id="appHeader">
-    <div id="headerLeft">
-      <div class="title">Parcel Finder</div>
-      <div class="subtitle">Cyprus cadastral search</div>
+    <div id="headerTitle">
+      <span id="headerIcon" aria-hidden="true">🏡</span>
+      <span>Geoktimonas</span>
     </div>
     <div id="headerRight">
       <button id="openBtnMobile" onclick="openSidebar()" title="Show search panel">&#9776;</button>
@@ -202,7 +227,10 @@
   </header>
 
   <div id="sidebar">
-    <h1>Parcel Finder <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button></h1>
+    <h1>
+      <span>Search</span>
+      <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button>
+    </h1>
 
     <div class="field">
       <label for="sheet">Sheet</label>

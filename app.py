@@ -32,7 +32,7 @@ DISTRICT_NAMES = {1: "Lefkosia", 2: "Ammochostos", 3: "Keryneia",
 
 BROWSERS = ["chrome", "chrome110", "chrome116", "chrome120", "safari"]
 
-st.set_page_config(page_title="Parcel Finder", page_icon="📍", layout="wide")
+st.set_page_config(page_title="Geoktimonas", page_icon="📍", layout="wide")
 
 st.markdown(
     """
@@ -257,7 +257,7 @@ def _go_to_parcel(attrs):
 
 
 # ── Header + search panel ─────────────────────────────────────────────────────
-st.title("Parcel Finder")
+st.title("Geoktimonas")
 st.caption("On mobile, search controls dock to the bottom like a modal.")
 
 with st.form("parcel_form"):
