@@ -34,6 +34,34 @@ BROWSERS = ["chrome", "chrome110", "chrome116", "chrome120", "safari"]
 
 st.set_page_config(page_title="Parcel Finder", page_icon="📍", layout="wide")
 
+st.markdown(
+    """
+    <style>
+      @media (max-width: 768px) {
+        div[data-testid="stForm"] {
+          position: fixed;
+          left: 0.6rem;
+          right: 0.6rem;
+          bottom: max(0.6rem, env(safe-area-inset-bottom));
+          z-index: 1001;
+          background: #ffffff;
+          border: 1px solid rgba(0, 0, 0, 0.12);
+          border-radius: 16px;
+          padding: 0.6rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+          max-height: 65vh;
+          overflow-y: auto;
+        }
+
+        .block-container {
+          padding-bottom: 23rem;
+        }
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # ── DLS API helpers ───────────────────────────────────────────────────────────
 def dls_query_layer(layer_id, params):
@@ -228,39 +256,40 @@ def _go_to_parcel(attrs):
     st.query_params["district"] = attrs.get("DIST_CODE", "")
 
 
-# ── Sidebar: search panel ────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("Parcel Finder")
+# ── Header + search panel ─────────────────────────────────────────────────────
+st.title("Parcel Finder")
+st.caption("On mobile, search controls dock to the bottom like a modal.")
 
-    with st.form("parcel_form"):
-        sheet = st.text_input("Sheet", placeholder="e.g. 47")
-        plan = st.text_input("Plan", placeholder="e.g. 41")
-        parcel_nbr = st.text_input("Parcel Number", placeholder="e.g. 190")
-        district = st.selectbox("District (optional)", list(DISTRICTS.keys()))
-        submitted = st.form_submit_button("Find Parcel", type="primary",
-                                          use_container_width=True)
+with st.form("parcel_form"):
+    sheet = st.text_input("Sheet", placeholder="e.g. 47")
+    plan = st.text_input("Plan", placeholder="e.g. 41")
+    parcel_nbr = st.text_input("Parcel Number", placeholder="e.g. 190")
+    district = st.selectbox("District (optional)", list(DISTRICTS.keys()))
+    submitted = st.form_submit_button(
+        "Find Parcel", type="primary", use_container_width=True
+    )
 
-    if submitted:
-        if not (sheet and plan and parcel_nbr):
-            st.error("Fill in Sheet, Plan, and Parcel.")
+if submitted:
+    if not (sheet and plan and parcel_nbr):
+        st.error("Fill in Sheet, Plan, and Parcel.")
+    else:
+        with st.spinner("Querying DLS..."):
+            try:
+                features = find_parcel_by_details(
+                    sheet.strip(), plan.strip(), int(parcel_nbr.strip()),
+                    DISTRICTS[district],
+                )
+            except Exception as e:
+                st.error(f"DLS query failed: {e}")
+                features = []
+
+        if not features:
+            st.warning("No parcel found.")
         else:
-            with st.spinner("Querying DLS..."):
-                try:
-                    features = find_parcel_by_details(
-                        sheet.strip(), plan.strip(), int(parcel_nbr.strip()),
-                        DISTRICTS[district],
-                    )
-                except Exception as e:
-                    st.error(f"DLS query failed: {e}")
-                    features = []
-
-            if not features:
-                st.warning("No parcel found.")
-            else:
-                if len(features) > 1:
-                    st.info(f"{len(features)} matches — showing first. Pick a district to narrow down.")
-                st.session_state["listing"] = None
-                _go_to_parcel(features[0]["attributes"])
+            if len(features) > 1:
+                st.info(f"{len(features)} matches — showing first. Pick a district to narrow down.")
+            st.session_state["listing"] = None
+            _go_to_parcel(features[0]["attributes"])
 
 # ── Main area: map result ────────────────────────────────────────────────────
 qp = st.query_params

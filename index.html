@@ -9,7 +9,32 @@
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      height: 100vh;
+      display: flex;
+      padding-top: 56px;
+    }
+
+    #appHeader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      z-index: 1100;
+      background: #0f172a;
+      color: #f1f5f9;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+    #headerLeft { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    #headerRight { display: flex; align-items: center; }
+    #appHeader .title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+    #appHeader .subtitle { font-size: 12px; color: #94a3b8; }
 
     #sidebar {
       width: 280px; min-width: 280px;
@@ -46,45 +71,135 @@
     .error { color: #f87171; font-size: 13px; display: none; }
     .hint { color: #64748b; font-size: 12px; }
 
-    #details { display: none; margin-top: 8px; }
-    #details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #94a3b8; padding: 6px 0; user-select: none; }
-    #details .detail-row { font-size: 13px; color: #cbd5e1; padding: 3px 0; }
-    #details .detail-label { color: #64748b; }
-
     /* Map area */
-    #map-wrap { flex: 1; position: relative; }
-    #map { width: 100%; height: 100vh; }
+    #map-wrap { flex: 1; position: relative; height: 100%; }
+    #map { width: 100%; height: 100%; }
 
-    /* Open sidebar button — inside map area, top-left */
-    #openBtn {
-      display: none; position: absolute; top: 80px; left: 10px; z-index: 1002;
-      width: 36px; height: 36px; border-radius: 4px;
-      border: 2px solid rgba(0,0,0,0.2); background: #fff;
-      font-size: 18px; font-weight: bold; cursor: pointer;
-      color: #333; background-clip: padding-box;
+    /* App-bar menu button (mobile) */
+    #openBtnMobile {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      font-size: 24px;
+      font-weight: 400;
+      cursor: pointer;
+      color: #f1f5f9;
       justify-content: center; align-items: center;
     }
-    #openBtn:hover { background: #f4f4f4; }
+    #openBtnMobile:hover { background: rgba(148, 163, 184, 0.18); }
 
-    .info-box {
-      position: absolute; top: 10px; right: 10px; z-index: 1000;
+    /* Map menu button (desktop) */
+    #openBtnDesktop {
+      display: none;
+      position: absolute;
+      top: 88px;
+      left: 10px;
+      z-index: 1002;
+      width: 36px;
+      height: 36px;
+      border-radius: 4px;
+      border: 2px solid rgba(0,0,0,0.2);
+      background: #fff;
+      color: #333;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      justify-content: center;
+      align-items: center;
+    }
+    #openBtnDesktop:hover { background: #f4f4f4; }
+
+    .parcel-control { margin: 8px 10px 0 0; }
+    .parcel-control .parcel-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .parcel-control .parcel-toggle.leaflet-control-layers-toggle {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-indent: 0;
+      text-decoration: none;
+      background-image: none;
+      font-size: 16px;
+      font-weight: 700;
+      color: #334155;
+      user-select: none;
+    }
+    .parcel-control .parcel-toggle:hover { background: #f8fafc; }
+    .parcel-control .parcel-close {
+      width: 36px;
+      height: 36px;
+      margin-left: auto;
+      border: 0;
+      background: transparent;
+      color: #334155;
+      font-size: 20px;
+      font-weight: 700;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .parcel-control .parcel-close:hover { background: #f8fafc; }
+    .parcel-control.is-open .parcel-close { display: block; }
+    .parcel-control .parcel-panel {
       background: rgba(255,255,255,0.95); border-radius: 8px;
       padding: 12px 16px; font-size: 12px; line-height: 1.5;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2); max-width: 220px;
       display: none;
+      margin-top: 8px;
     }
-    .info-box h3 { margin: 0 0 6px; font-size: 14px; }
-    .info-box .label { color: #666; }
-    .info-box .value { font-weight: 600; }
+    .parcel-control.is-open .parcel-panel { display: block; }
+    .parcel-control .parcel-panel h3 { margin: 0 0 6px; font-size: 14px; }
+    .parcel-control .parcel-panel .label { color: #666; }
+    .parcel-control .parcel-panel .value { font-weight: 600; }
+    .parcel-control .placeholder { color: #64748b; }
 
     @media (max-width: 640px) {
-      #sidebar { position: absolute; height: 100vh; z-index: 1001; }
-      #sidebar.hidden { margin-left: -280px; }
-      .info-box { top: auto; bottom: 10px; right: 10px; }
+      #sidebar {
+        position: fixed;
+        left: auto;
+        right: 0;
+        top: 56px;
+        bottom: 0;
+        width: 280px;
+        min-width: 280px;
+        max-height: none;
+        border-radius: 0;
+        box-shadow: -8px 0 24px rgba(0,0,0,0.35);
+        transition: transform 0.25s ease;
+      }
+      #sidebar.hidden {
+        margin-left: 0;
+        transform: translateX(100%);
+        pointer-events: none;
+      }
+      #openBtnMobile {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+      }
+      #openBtnDesktop { display: none !important; }
     }
   </style>
 </head>
 <body>
+  <header id="appHeader">
+    <div id="headerLeft">
+      <div class="title">Parcel Finder</div>
+      <div class="subtitle">Cyprus cadastral search</div>
+    </div>
+    <div id="headerRight">
+      <button id="openBtnMobile" onclick="openSidebar()" title="Show search panel">&#9776;</button>
+    </div>
+  </header>
 
   <div id="sidebar">
     <h1>Parcel Finder <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button></h1>
@@ -118,36 +233,41 @@
     <button id="clearBtn" onclick="doClear()" style="display:none; width:100%; padding:10px; background:#334155; color:#cbd5e1; border:none; border-radius:6px; font-size:14px; cursor:pointer; margin-top:-8px;">Clear</button>
     <div class="error" id="errorMsg"></div>
 
-    <details id="details">
-      <summary>Parcel Details</summary>
-      <div id="detailsContent"></div>
-    </details>
-
     <div class="hint" id="shareHint" style="display:none;">
       The URL in your browser is the shareable link.
     </div>
   </div>
 
   <div id="map-wrap">
-    <button id="openBtn" onclick="openSidebar()" title="Show search panel">&#9776;</button>
+    <button id="openBtnDesktop" onclick="openSidebar()" title="Show search panel">&#9776;</button>
     <div id="map"></div>
-    <div class="info-box" id="infoBox"></div>
   </div>
 
   <script>
     var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
 
     var sidebar = document.getElementById('sidebar');
-    var openBtn = document.getElementById('openBtn');
+    var openBtnMobile = document.getElementById('openBtnMobile');
+    var openBtnDesktop = document.getElementById('openBtnDesktop');
+
+    function setOpenButtonVisibility(isSidebarOpen) {
+      if (isMobile()) {
+        openBtnMobile.style.display = isSidebarOpen ? 'none' : 'flex';
+        openBtnDesktop.style.display = 'none';
+      } else {
+        openBtnDesktop.style.display = isSidebarOpen ? 'none' : 'flex';
+        openBtnMobile.style.display = 'none';
+      }
+    }
 
     function closeSidebar() {
       sidebar.classList.add('hidden');
-      openBtn.style.display = 'flex';
+      setOpenButtonVisibility(false);
       setTimeout(function() { map.invalidateSize(); }, 300);
     }
     function openSidebar() {
       sidebar.classList.remove('hidden');
-      openBtn.style.display = 'none';
+      setOpenButtonVisibility(true);
       setTimeout(function() { map.invalidateSize(); }, 300);
     }
     function isMobile() { return window.innerWidth <= 640; }
@@ -166,9 +286,39 @@
 
     var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
 
-    L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }).addTo(map);
+    var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }).addTo(map);
+    var infoBoxControl = L.control({ position: 'topright' });
+    infoBoxControl.onAdd = function() {
+      var div = L.DomUtil.create('div', 'leaflet-control leaflet-control-layers parcel-control');
+      div.id = 'parcelControl';
+      div.innerHTML =
+        '<div class="parcel-toolbar">' +
+        '<a href="#" id="infoToggle" class="parcel-toggle leaflet-control-layers-toggle" title="Parcel details">i</a>' +
+        '<button id="infoClose" class="parcel-close" title="Close details">&times;</button>' +
+        '</div>' +
+        '<div id="infoBox" class="parcel-panel">' +
+        '<div class="placeholder">Select a parcel and tap this button to view details.</div>' +
+        '</div>';
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      return div;
+    };
+    infoBoxControl.addTo(map);
 
     var parcelLayer = null;
+    var parcelControlEl = document.getElementById('parcelControl');
+    var infoToggleEl = document.getElementById('infoToggle');
+    var infoCloseEl = document.getElementById('infoClose');
+    var infoBoxEl = document.getElementById('infoBox');
+
+    infoToggleEl.addEventListener('click', function(e) {
+      e.preventDefault();
+      parcelControlEl.classList.toggle('is-open');
+    });
+    infoCloseEl.addEventListener('click', function(e) {
+      e.preventDefault();
+      parcelControlEl.classList.remove('is-open');
+    });
 
     function showError(msg) {
       var el = document.getElementById('errorMsg');
@@ -189,6 +339,18 @@
       if (distCode) where += " AND DIST_CODE=" + distCode;
       return dlsQuery(0, {
         where: where,
+        outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
+        returnGeometry: 'true',
+        outSR: '4326'
+      });
+    }
+
+    function findParcelByCoords(lat, lng) {
+      return dlsQuery(0, {
+        geometry: lng + ',' + lat,
+        geometryType: 'esriGeometryPoint',
+        inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects',
         outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
         returnGeometry: 'true',
         outSR: '4326'
@@ -249,28 +411,15 @@
 
       map.fitBounds(parcelLayer.getBounds().pad(0.3));
 
-      var infoBox = document.getElementById('infoBox');
-      infoBox.innerHTML =
+      infoBoxEl.innerHTML =
         '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
+        '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '—') + '</span></div>' +
         '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
         '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
-        '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>';
-      infoBox.style.display = 'block';
-
-      var detailsEl = document.getElementById('details');
-      var content = document.getElementById('detailsContent');
-      var rows = [
-        ['Parcel', attrs.PARCEL_NBR],
-        ['Sheet / Plan', attrs.SHEET + ' / ' + attrs.PLAN_NBR],
-        ['Block', attrs.BLCK_CODE || '—'],
-        ['District', extra.district],
-        ['Municipality', extra.municipality],
-        ['Planning Zone', extra.planning_zone + ' (' + extra.planning_zone_desc + ')']
-      ];
-      content.innerHTML = rows.map(function(r) {
-        return '<div class="detail-row"><span class="detail-label">' + r[0] + ':</span> ' + r[1] + '</div>';
-      }).join('');
-      detailsEl.style.display = 'block';
+        '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
+        '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
+        '<div><span class="label">Zone Detail:</span> <span class="value">' + extra.planning_zone_desc + '</span></div>';
+      parcelControlEl.classList.add('has-data');
 
       document.getElementById('shareHint').style.display = 'block';
       document.getElementById('clearBtn').style.display = 'block';
@@ -278,8 +427,9 @@
 
     function doClear() {
       if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
-      document.getElementById('infoBox').style.display = 'none';
-      document.getElementById('details').style.display = 'none';
+      parcelControlEl.classList.remove('has-data');
+      parcelControlEl.classList.remove('is-open');
+      infoBoxEl.innerHTML = '<div class="placeholder">Select a parcel and tap this button to view details.</div>';
       document.getElementById('shareHint').style.display = 'none';
       document.getElementById('clearBtn').style.display = 'none';
       document.getElementById('sheet').value = '';
@@ -344,6 +494,35 @@
         });
     }
 
+    map.on('click', function(e) {
+      showError('');
+      findParcelByCoords(e.latlng.lat, e.latlng.lng)
+        .then(function(data) {
+          var feature = (data.features || [])[0];
+          if (!feature) {
+            showError('No parcel found at this point.');
+            return;
+          }
+
+          var attrs = feature.attributes;
+          document.getElementById('sheet').value = attrs.SHEET || '';
+          document.getElementById('plan').value = attrs.PLAN_NBR || '';
+          document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
+          document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
+
+          var center = centroid(feature.geometry.rings);
+          updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
+
+          return enrich(center[0], center[1]).then(function(extra) {
+            showParcel(feature, extra);
+            if (isMobile()) closeSidebar();
+          });
+        })
+        .catch(function(err) {
+          showError('DLS query failed: ' + err.message);
+        });
+    });
+
     function loadFromURL() {
       var params = new URLSearchParams(window.location.search);
       var sheet = params.get('sheet');
@@ -356,7 +535,7 @@
         document.getElementById('plan').value = plan;
         document.getElementById('parcel').value = parcelNbr;
         if (distCode) document.getElementById('district').value = distCode;
-        if (isMobile()) { sidebar.classList.add('hidden'); openBtn.style.display = 'flex'; }
+        if (isMobile()) { sidebar.classList.add('hidden'); setOpenButtonVisibility(false); }
         doSearch();
       }
     }
@@ -365,6 +544,11 @@
       el.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
       });
+    });
+
+    setOpenButtonVisibility(!sidebar.classList.contains('hidden'));
+    window.addEventListener('resize', function() {
+      setOpenButtonVisibility(!sidebar.classList.contains('hidden'));
     });
 
     loadFromURL();
