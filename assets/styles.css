@@ -130,6 +130,30 @@ body {
 #searchBarClear:hover { color: #f1f5f9; }
 #searchBar.has-result #searchBarClear { display: block; }
 
+#authBtn {
+  display: none;
+}
+#authBtnDesktop {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 1060;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 24px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#authBtnDesktop:hover { background: #253347; }
+#authBtnDesktop svg { flex-shrink: 0; color: #94a3b8; }
+
 /* --- Sidebar / Floating Card (desktop) --- */
 #sidebar {
   position: fixed;
@@ -347,6 +371,23 @@ body {
   #searchBar.has-result #searchBarText { color: #f1f5f9; }
   #searchBarClear { color: #94a3b8; }
   #searchBarClear:hover { color: #f1f5f9; }
+
+  #authBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #94a3b8;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+  }
+  #authBtn:hover { background: #253347; }
+  #authBtnDesktop { display: none; }
 
   #map-wrap { left: 0; top: 0; bottom: 56px; }
 

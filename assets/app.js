@@ -488,6 +488,7 @@ function doSearch() {
 }
 
 map.on('click', function(e) {
+  if (map.getZoom() < 16) return;
   showError('');
   findParcelByCoords(e.latlng.lat, e.latlng.lng)
     .then(function(data) {
