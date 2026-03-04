@@ -32,12 +32,25 @@ function signOut() {
   localStorage.removeItem('geo_auth_user');
   parcelList = [];
   renderParcelList();
+  closeUserMenu();
   updateAuthUI();
+  if (window.google && google.accounts) {
+    google.accounts.id.disableAutoSelect();
+  }
+}
+
+function toggleUserMenu() {
+  var menu = document.getElementById('userMenu');
+  menu.classList.toggle('hidden');
+}
+
+function closeUserMenu() {
+  document.getElementById('userMenu').classList.add('hidden');
 }
 
 function handleAuthClick() {
   if (authUser) {
-    signOut();
+    toggleUserMenu();
     return;
   }
   var container = document.getElementById('googleSignInDiv');
@@ -68,6 +81,9 @@ function updateAuthUI() {
     desktopText.textContent = authUser.name.split(' ')[0];
     listAuthPrompt.style.display = 'none';
     parcelListWrap.style.display = 'block';
+    document.getElementById('userMenuAvatar').src = authUser.picture;
+    document.getElementById('userMenuName').textContent = authUser.name;
+    document.getElementById('userMenuEmail').textContent = authUser.email;
   } else {
     mobileIcon.style.display = '';
     mobileAvatar.style.display = 'none';
@@ -672,6 +688,15 @@ document.getElementById('authBtn').addEventListener('click', function(e) {
 document.getElementById('authBtnDesktop').addEventListener('click', function(e) {
   e.stopPropagation();
   handleAuthClick();
+});
+document.getElementById('userMenuSignOut').addEventListener('click', function() {
+  signOut();
+});
+document.addEventListener('click', function(e) {
+  var menu = document.getElementById('userMenu');
+  if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
+    closeUserMenu();
+  }
 });
 
 restoreSession();
