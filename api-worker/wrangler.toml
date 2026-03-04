@@ -3,9 +3,9 @@ main = "src/index.js"
 compatibility_date = "2026-03-03"
 
 [vars]
-GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = "284743039293-0lo05gnap8immcls45hqsniv16djtdap.apps.googleusercontent.com"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "geoktimonas-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7dd9cbad-8720-445d-9c10-1d93df9531bc"
