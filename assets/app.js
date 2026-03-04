@@ -40,7 +40,11 @@ function handleAuthClick() {
     signOut();
     return;
   }
-  if (window.google && google.accounts) {
+  var container = document.getElementById('googleSignInDiv');
+  var gBtn = container && (container.querySelector('[role="button"]') || container.querySelector('div[style]'));
+  if (gBtn) {
+    gBtn.click();
+  } else if (window.google && google.accounts) {
     google.accounts.id.prompt();
   }
 }
@@ -104,6 +108,26 @@ function initGoogleSignIn() {
     callback: onSignIn,
     auto_select: true,
   });
+  var container = document.getElementById('googleSignInDiv');
+  if (container) {
+    google.accounts.id.renderButton(container, {
+      type: 'standard',
+      size: 'large',
+      theme: 'filled_black',
+      text: 'signin_with',
+      width: 250,
+    });
+  }
+  var listContainer = document.getElementById('googleSignInList');
+  if (listContainer) {
+    google.accounts.id.renderButton(listContainer, {
+      type: 'standard',
+      size: 'large',
+      theme: 'filled_black',
+      text: 'signin_with',
+      width: 250,
+    });
+  }
   if (!authUser) {
     google.accounts.id.prompt();
   }
@@ -130,7 +154,9 @@ var parcelListEl = document.getElementById('parcelList');
 var parcelListEmptyEl = document.getElementById('parcelListEmpty');
 var parcelList = [];
 var currentParcel = null;
-var API_BASE = window.GEOKTIMONAS_API_BASE || '/api';
+var API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:8787/api'
+  : 'https://geoktimonas-api.hello-118.workers.dev/api';
 
 function parcelKey(item) {
   return [item.sheet, item.plan_nbr, item.parcel_nbr, item.dist_code || ''].join('|');
@@ -637,6 +663,15 @@ document.querySelectorAll('#sidebar input').forEach(function(el) {
   el.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
   });
+});
+
+document.getElementById('authBtn').addEventListener('click', function(e) {
+  e.stopPropagation();
+  handleAuthClick();
+});
+document.getElementById('authBtnDesktop').addEventListener('click', function(e) {
+  e.stopPropagation();
+  handleAuthClick();
 });
 
 restoreSession();

@@ -151,7 +151,7 @@ body {
   cursor: pointer;
   transition: background 0.15s;
 }
-#authBtnDesktop:hover { background: #253347; }
+#authBtnDesktop:hover { background: #253347; cursor: pointer; }
 #authBtnDesktop svg { flex-shrink: 0; color: #94a3b8; }
 
 /* --- Sidebar / Floating Card (desktop) --- */
