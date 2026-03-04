@@ -3,6 +3,7 @@ var GOOGLE_CLIENT_ID = '284743039293-0lo05gnap8immcls45hqsniv16djtdap.apps.googl
 
 var authUser = null;
 var authToken = null;
+var parcelSavedLists = [];
 
 function getAuthHeaders() {
   if (!authToken) return {};
@@ -23,6 +24,7 @@ function onSignIn(response) {
   localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
   updateAuthUI();
   loadLists();
+  if (currentParcel) checkParcelSaved();
 }
 
 function signOut() {
@@ -100,16 +102,19 @@ function restoreSession() {
   var user = localStorage.getItem('geo_auth_user');
   if (token && user) {
     try {
+      authUser = JSON.parse(user);
       var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload.exp * 1000 > Date.now()) {
         authToken = token;
-        authUser = JSON.parse(user);
-        updateAuthUI();
-        return true;
       }
-    } catch (e) {}
-    localStorage.removeItem('geo_auth_token');
-    localStorage.removeItem('geo_auth_user');
+      updateAuthUI();
+      return true;
+    } catch (e) {
+      authUser = null;
+      authToken = null;
+      localStorage.removeItem('geo_auth_token');
+      localStorage.removeItem('geo_auth_user');
+    }
   }
   return false;
 }
@@ -144,7 +149,7 @@ function initGoogleSignIn() {
       width: 250,
     });
   }
-  if (!authUser) {
+  if (!authToken) {
     google.accounts.id.prompt();
   }
 }
@@ -169,7 +174,7 @@ var listHintEl = document.getElementById('listHint');
 var currentParcel = null;
 var userLists = [];
 var API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:8787/api'
+  ? 'http://localhost:8788/api'
   : 'https://geoktimonas-api.hello-118.workers.dev/api';
 
 function parcelKey(item) {
@@ -319,6 +324,34 @@ document.getElementById('backToLists').addEventListener('click', function() {
 
 // --- Save panel ---
 
+async function checkParcelSaved() {
+  parcelSavedLists = [];
+  if (!authUser || !currentParcel) { updateSaveButton(); return; }
+  try {
+    var qs = 'sheet=' + encodeURIComponent(currentParcel.sheet) +
+      '&plan_nbr=' + encodeURIComponent(currentParcel.plan_nbr) +
+      '&parcel_nbr=' + encodeURIComponent(currentParcel.parcel_nbr);
+    if (currentParcel.dist_code) qs += '&dist_code=' + encodeURIComponent(currentParcel.dist_code);
+    var res = await fetch(API_BASE + '/parcels/check?' + qs, { headers: getAuthHeaders() });
+    if (res.ok) parcelSavedLists = await res.json();
+  } catch (e) { /* silent */ }
+  updateSaveButton();
+}
+
+function updateSaveButton() {
+  var btn = document.getElementById('detailsAddBtn');
+  var label = btn.parentElement.querySelector('.action-label');
+  if (parcelSavedLists.length > 0) {
+    btn.classList.add('is-saved');
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    label.textContent = 'Saved';
+  } else {
+    btn.classList.remove('is-saved');
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    label.textContent = 'Save';
+  }
+}
+
 function renderSavePanel() {
   var picker = document.getElementById('saveListPicker');
   if (!userLists.length) {
@@ -326,19 +359,29 @@ function renderSavePanel() {
     return;
   }
   picker.innerHTML = userLists.map(function(list) {
+    var isSaved = parcelSavedLists.indexOf(list.id) !== -1;
+    var icon = isSaved
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    var check = isSaved
+      ? '<svg class="save-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5a0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '';
     return (
-      '<div class="save-list-item" data-save-to="' + list.id + '">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' +
-        list.name +
+      '<div class="save-list-item' + (isSaved ? ' saved' : '') + '" data-save-to="' + list.id + '">' +
+        icon +
+        '<span class="save-list-name">' + list.name + '</span>' +
+        check +
       '</div>'
     );
   }).join('');
 }
 
-function openSavePanel() {
+async function openSavePanel() {
   if (!authUser) { handleAuthClick(); return; }
+  await checkParcelSaved();
+  var title = document.querySelector('.save-panel-title');
+  title.textContent = parcelSavedLists.length > 0 ? 'Saved in your lists' : 'Save to list';
   renderSavePanel();
-  document.getElementById('newListForm').style.display = 'none';
   document.getElementById('saveOverlay').classList.remove('hidden');
 }
 
@@ -350,6 +393,33 @@ document.getElementById('saveListPicker').addEventListener('click', async functi
   var item = e.target.closest('[data-save-to]');
   if (!item || !currentParcel) return;
   var listId = item.getAttribute('data-save-to');
+  var isSaved = item.classList.contains('saved');
+
+  if (isSaved) {
+    try {
+      var parcelsRes = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', { headers: getAuthHeaders() });
+      if (!parcelsRes.ok) throw new Error('failed');
+      var parcels = await parcelsRes.json();
+      var norm = function(s) { return String(s == null ? '' : s).replace(/\.0$/, ''); };
+      var match = parcels.find(function(p) {
+        return norm(p.sheet) === norm(currentParcel.sheet) &&
+          norm(p.plan_nbr) === norm(currentParcel.plan_nbr) &&
+          norm(p.parcel_nbr) === norm(currentParcel.parcel_nbr) &&
+          String(p.dist_code || '') == String(currentParcel.dist_code || '');
+      });
+      if (match) {
+        var delRes = await fetch(API_BASE + '/parcels/' + encodeURIComponent(match.id), {
+          method: 'DELETE', headers: getAuthHeaders()
+        });
+        if (!delRes.ok) throw new Error('failed');
+      }
+      await loadLists();
+      await checkParcelSaved();
+      renderSavePanel();
+    } catch (err) { console.error(err); }
+    return;
+  }
+
   try {
     var headers = Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders());
     var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', {
@@ -358,28 +428,41 @@ document.getElementById('saveListPicker').addEventListener('click', async functi
       body: JSON.stringify(currentParcel)
     });
     if (res.status === 409) {
-      item.classList.add('saved');
-      item.textContent = 'Already saved';
+      parcelSavedLists.push(listId);
+      updateSaveButton();
+      renderSavePanel();
       return;
     }
     if (!res.ok) throw new Error('failed');
-    item.classList.add('saved');
-    var origText = item.innerHTML;
-    item.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
     await loadLists();
-    setTimeout(function() { closeSavePanel(); }, 800);
+    parcelSavedLists.push(listId);
+    updateSaveButton();
+    renderSavePanel();
   } catch (err) {
     console.error(err);
   }
 });
 
+function openNewListModal() {
+  document.getElementById('newListName').value = '';
+  document.getElementById('newListModal').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('newListName').focus(); }, 50);
+}
+
+function closeNewListModal() {
+  document.getElementById('newListModal').classList.add('hidden');
+}
+
 document.getElementById('newListBtn').addEventListener('click', function() {
-  var form = document.getElementById('newListForm');
-  form.style.display = form.style.display === 'none' ? 'flex' : 'none';
-  if (form.style.display === 'flex') {
-    document.getElementById('newListName').value = '';
-    document.getElementById('newListName').focus();
-  }
+  openNewListModal();
+});
+
+document.getElementById('newListCancel').addEventListener('click', function() {
+  closeNewListModal();
+});
+
+document.getElementById('newListModal').addEventListener('click', function(e) {
+  if (e.target === this) closeNewListModal();
 });
 
 document.getElementById('newListSave').addEventListener('click', async function() {
@@ -387,7 +470,7 @@ document.getElementById('newListSave').addEventListener('click', async function(
   if (!name) return;
   var created = await createList(name);
   if (created) {
-    document.getElementById('newListForm').style.display = 'none';
+    closeNewListModal();
     renderSavePanel();
   }
 });
@@ -628,10 +711,11 @@ function showParcel(feature, extra) {
   if (parcelLayer) { map.removeLayer(parcelLayer); }
 
   var attrs = feature.attributes;
+  var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
   currentParcel = {
-    sheet: attrs.SHEET || '',
-    plan_nbr: attrs.PLAN_NBR || '',
-    parcel_nbr: attrs.PARCEL_NBR || '',
+    sheet: clean(attrs.SHEET),
+    plan_nbr: clean(attrs.PLAN_NBR),
+    parcel_nbr: clean(attrs.PARCEL_NBR),
     dist_code: attrs.DIST_CODE || null,
     district: extra.district || '',
     municipality: extra.municipality || '',
@@ -650,7 +734,9 @@ function showParcel(feature, extra) {
 
   detailsContentEl.innerHTML = html;
   detailsActionsEl.style.display = 'flex';
-  detailsAddBtn.classList.remove('done');
+  parcelSavedLists = [];
+  updateSaveButton();
+  checkParcelSaved();
   switchTab('details');
   if (isMobile()) {
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });

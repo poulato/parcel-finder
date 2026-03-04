@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Geoktimonas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=4" />
+  <link rel="stylesheet" href="./assets/styles.css?v=5" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -90,10 +90,6 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New List
       </button>
-      <div id="newListForm" style="display:none;">
-        <input type="text" id="newListName" placeholder="List name" />
-        <button id="newListSave">Create</button>
-      </div>
     </div>
 
     <div id="viewListParcels" class="sidebar-view">
@@ -182,7 +178,18 @@
     </button>
   </nav>
 
+  <div id="newListModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <h3>New List</h3>
+      <input type="text" id="newListName" placeholder="List name" />
+      <div class="modal-actions">
+        <button id="newListCancel" class="modal-btn-secondary">Cancel</button>
+        <button id="newListSave" class="modal-btn-primary">Create</button>
+      </div>
+    </div>
+  </div>
+
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/app.js?v=4" defer></script>
+  <script src="./assets/app.js?v=5" defer></script>
 </body>
 </html>

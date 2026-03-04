@@ -219,6 +219,31 @@ export default {
       return json(results?.[0] || { id }, 201);
     }
 
+    if (path === "/api/parcels/check" && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json([]);
+
+      const sheet = url.searchParams.get("sheet");
+      const plan = url.searchParams.get("plan_nbr");
+      const parcel = url.searchParams.get("parcel_nbr");
+      const dist = url.searchParams.get("dist_code");
+      if (!sheet || !plan || !parcel) return json([]);
+
+      const distVal = dist ? parseInt(dist) : -1;
+      const norm = s => s ? s.replace(/\.0$/, '') : s;
+
+      const { results } = await env.DB.prepare(
+        `SELECT DISTINCT p.list_id FROM saved_parcels p
+         WHERE p.user_id = ?
+         AND REPLACE(p.sheet, '.0', '') = ?
+         AND REPLACE(p.plan_nbr, '.0', '') = ?
+         AND REPLACE(p.parcel_nbr, '.0', '') = ?
+         AND IFNULL(p.dist_code, -1) = ?`
+      ).bind(user.id, norm(sheet), norm(plan), norm(parcel), distVal).all();
+
+      return json((results || []).map(r => r.list_id));
+    }
+
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
