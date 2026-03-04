@@ -1,3 +1,7 @@
+const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+let cachedCerts = null;
+let certsExpiry = 0;
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -5,16 +9,76 @@ function json(data, status = 200) {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
 }
 
-function getUserId(url, body) {
-  const fromQuery = url.searchParams.get("user_id");
-  if (fromQuery) return fromQuery;
-  if (body && body.user_id) return body.user_id;
-  return null;
+function base64urlDecode(str) {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+}
+
+async function getGoogleCerts() {
+  if (cachedCerts && Date.now() < certsExpiry) return cachedCerts;
+  const res = await fetch(GOOGLE_CERTS_URL);
+  const jwks = await res.json();
+  cachedCerts = jwks.keys;
+  const cacheControl = res.headers.get("cache-control") || "";
+  const maxAge = parseInt((cacheControl.match(/max-age=(\d+)/) || [])[1] || "3600");
+  certsExpiry = Date.now() + maxAge * 1000;
+  return cachedCerts;
+}
+
+async function verifyGoogleToken(idToken, clientId) {
+  const parts = idToken.split(".");
+  if (parts.length !== 3) throw new Error("Invalid token format");
+
+  const header = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[0])));
+  const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[1])));
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp < now) throw new Error("Token expired");
+  if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com")
+    throw new Error("Invalid issuer");
+  if (payload.aud !== clientId) throw new Error("Invalid audience");
+
+  const certs = await getGoogleCerts();
+  const cert = certs.find((k) => k.kid === header.kid);
+  if (!cert) throw new Error("Key not found");
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    { kty: cert.kty, n: cert.n, e: cert.e, alg: cert.alg, ext: true },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+  const data = new TextEncoder().encode(parts[0] + "." + parts[1]);
+  const signature = base64urlDecode(parts[2]);
+  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+  if (!valid) throw new Error("Invalid signature");
+
+  return payload;
+}
+
+async function getAuthUser(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  try {
+    const payload = await verifyGoogleToken(token, env.GOOGLE_CLIENT_ID);
+    return {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 export default {
@@ -30,9 +94,15 @@ export default {
       return json({ ok: true, service: "geoktimonas-api" });
     }
 
+    if (path === "/api/auth/me" && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Not authenticated" }, 401);
+      return json(user);
+    }
+
     if (path === "/api/parcels" && request.method === "GET") {
-      const userId = getUserId(url);
-      if (!userId) return json({ error: "user_id is required" }, 400);
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
 
       const { results } = await env.DB.prepare(
         `SELECT id, user_id, sheet, plan_nbr, parcel_nbr, dist_code,
@@ -41,17 +111,17 @@ export default {
          FROM saved_parcels
          WHERE user_id = ?
          ORDER BY datetime(created_at) DESC`
-      ).bind(userId).all();
+      ).bind(user.id).all();
 
       return json(results || []);
     }
 
     if (path === "/api/parcels" && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid JSON body" }, 400);
-
-      const userId = getUserId(url, body);
-      if (!userId) return json({ error: "user_id is required" }, 400);
       if (!body.sheet || !body.plan_nbr || !body.parcel_nbr) {
         return json({ error: "sheet, plan_nbr, parcel_nbr are required" }, 400);
       }
@@ -64,7 +134,7 @@ export default {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         id,
-        userId,
+        user.id,
         body.sheet,
         body.plan_nbr,
         body.parcel_nbr,
@@ -79,9 +149,8 @@ export default {
       try {
         await stmt.run();
       } catch (err) {
-        // Unique index violation means already in list.
         if (String(err).includes("UNIQUE")) {
-          return json({ error: "Parcel already exists for user" }, 409);
+          return json({ error: "Parcel already exists in your list" }, 409);
         }
         return json({ error: "Failed to save parcel", details: String(err) }, 500);
       }
@@ -98,14 +167,15 @@ export default {
     }
 
     if (path.startsWith("/api/parcels/") && request.method === "DELETE") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
       const id = decodeURIComponent(path.replace("/api/parcels/", ""));
-      const userId = getUserId(url);
       if (!id) return json({ error: "id is required" }, 400);
-      if (!userId) return json({ error: "user_id is required" }, 400);
 
       const { meta } = await env.DB.prepare(
         `DELETE FROM saved_parcels WHERE id = ? AND user_id = ?`
-      ).bind(id, userId).run();
+      ).bind(id, user.id).run();
 
       if (!meta || !meta.changes) return json({ error: "Parcel not found" }, 404);
       return json({ ok: true });

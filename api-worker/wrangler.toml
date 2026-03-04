@@ -2,6 +2,9 @@ name = "geoktimonas-api"
 main = "src/index.js"
 compatibility_date = "2026-03-03"
 
+[vars]
+GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "geoktimonas-db"

@@ -226,6 +226,29 @@ body {
   color: #64748b;
   font-size: 12px;
 }
+.list-auth-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  color: #94a3b8;
+}
+.list-auth-prompt svg { color: #475569; }
+.list-auth-prompt p { margin: 0; font-size: 13px; }
+.list-auth-prompt button {
+  padding: 10px 24px;
+  border-radius: 24px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.list-auth-prompt button:hover { background: #253347; }
 .parcel-list-item {
   display: flex;
   justify-content: space-between;

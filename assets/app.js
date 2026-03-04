@@ -1,4 +1,113 @@
 var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
+var GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+
+var authUser = null;
+var authToken = null;
+
+function getAuthHeaders() {
+  if (!authToken) return {};
+  return { 'Authorization': 'Bearer ' + authToken };
+}
+
+function onSignIn(response) {
+  authToken = response.credential;
+  var parts = authToken.split('.');
+  var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+  authUser = {
+    id: payload.sub,
+    email: payload.email,
+    name: payload.name,
+    picture: payload.picture
+  };
+  localStorage.setItem('geo_auth_token', authToken);
+  localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
+  updateAuthUI();
+  loadParcelList();
+}
+
+function signOut() {
+  authUser = null;
+  authToken = null;
+  localStorage.removeItem('geo_auth_token');
+  localStorage.removeItem('geo_auth_user');
+  parcelList = [];
+  renderParcelList();
+  updateAuthUI();
+}
+
+function handleAuthClick() {
+  if (authUser) {
+    signOut();
+    return;
+  }
+  if (window.google && google.accounts) {
+    google.accounts.id.prompt();
+  }
+}
+
+function updateAuthUI() {
+  var mobileIcon = document.getElementById('authBtnIcon');
+  var mobileAvatar = document.getElementById('authBtnAvatar');
+  var desktopIcon = document.getElementById('authBtnDesktopIcon');
+  var desktopAvatar = document.getElementById('authBtnDesktopAvatar');
+  var desktopText = document.getElementById('authBtnDesktopText');
+  var listAuthPrompt = document.getElementById('listAuthPrompt');
+  var parcelListWrap = document.getElementById('parcelListWrap');
+
+  if (authUser) {
+    mobileIcon.style.display = 'none';
+    mobileAvatar.src = authUser.picture;
+    mobileAvatar.style.display = 'block';
+    desktopIcon.style.display = 'none';
+    desktopAvatar.src = authUser.picture;
+    desktopAvatar.style.display = 'block';
+    desktopText.textContent = authUser.name.split(' ')[0];
+    listAuthPrompt.style.display = 'none';
+    parcelListWrap.style.display = 'block';
+  } else {
+    mobileIcon.style.display = '';
+    mobileAvatar.style.display = 'none';
+    desktopIcon.style.display = '';
+    desktopAvatar.style.display = 'none';
+    desktopText.textContent = 'Sign in';
+    listAuthPrompt.style.display = '';
+    parcelListWrap.style.display = 'none';
+  }
+}
+
+function restoreSession() {
+  var token = localStorage.getItem('geo_auth_token');
+  var user = localStorage.getItem('geo_auth_user');
+  if (token && user) {
+    try {
+      var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload.exp * 1000 > Date.now()) {
+        authToken = token;
+        authUser = JSON.parse(user);
+        updateAuthUI();
+        return true;
+      }
+    } catch (e) {}
+    localStorage.removeItem('geo_auth_token');
+    localStorage.removeItem('geo_auth_user');
+  }
+  return false;
+}
+
+function initGoogleSignIn() {
+  if (!window.google || !google.accounts) {
+    setTimeout(initGoogleSignIn, 200);
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: onSignIn,
+    auto_select: true,
+  });
+  if (!authUser) {
+    google.accounts.id.prompt();
+  }
+}
 
 function switchTab(tabName) {
   document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
@@ -22,17 +131,6 @@ var parcelListEmptyEl = document.getElementById('parcelListEmpty');
 var parcelList = [];
 var currentParcel = null;
 var API_BASE = window.GEOKTIMONAS_API_BASE || '/api';
-var currentUserId = getOrCreateUserId();
-
-function getOrCreateUserId() {
-  var match = document.cookie.match(/(?:^|;\s*)geo_user_id=([^;]+)/);
-  if (match && match[1]) return decodeURIComponent(match[1]);
-  var id = (window.crypto && window.crypto.randomUUID)
-    ? window.crypto.randomUUID()
-    : 'user-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-  document.cookie = 'geo_user_id=' + encodeURIComponent(id) + '; Path=/; Max-Age=31536000; SameSite=Lax';
-  return id;
-}
 
 function parcelKey(item) {
   return [item.sheet, item.plan_nbr, item.parcel_nbr, item.dist_code || ''].join('|');
@@ -58,8 +156,9 @@ function renderParcelList() {
 }
 
 async function loadParcelList() {
+  if (!authUser) return;
   try {
-    var res = await fetch(API_BASE + '/parcels?user_id=' + encodeURIComponent(currentUserId));
+    var res = await fetch(API_BASE + '/parcels', { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('failed to load list');
     parcelList = await res.json();
     renderParcelList();
@@ -72,8 +171,9 @@ parcelListEl.addEventListener('click', async function(e) {
   var id = e.target.getAttribute('data-remove-id');
   if (!id) return;
   try {
-    var res = await fetch(API_BASE + '/parcels/' + encodeURIComponent(id) + '?user_id=' + encodeURIComponent(currentUserId), {
-      method: 'DELETE'
+    var res = await fetch(API_BASE + '/parcels/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('failed to remove');
     parcelList = parcelList.filter(function(item) { return item.id !== id; });
@@ -87,8 +187,9 @@ parcelListEl.addEventListener('click', async function(e) {
   }
 });
 
-addToListBtn.addEventListener('click', async function() {
+async function saveParcel() {
   if (!currentParcel) return;
+  if (!authUser) { handleAuthClick(); return; }
   var key = parcelKey(currentParcel);
   var exists = parcelList.some(function(item) { return parcelKey(item) === key; });
   if (exists) {
@@ -97,21 +198,27 @@ addToListBtn.addEventListener('click', async function() {
     return;
   }
   try {
-    var payload = Object.assign({ user_id: currentUserId }, currentParcel);
+    var headers = Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders());
     var res = await fetch(API_BASE + '/parcels', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: headers,
+      body: JSON.stringify(currentParcel)
     });
     if (!res.ok) throw new Error('failed to add');
     var created = await res.json();
     parcelList.unshift(created);
     renderParcelList();
-    listHintEl.textContent = 'Parcel added to your list.';
-    listHintEl.style.display = 'block';
+    return true;
   } catch (err) {
     console.error(err);
-    listHintEl.textContent = 'Failed to add parcel.';
+    return false;
+  }
+}
+
+addToListBtn.addEventListener('click', async function() {
+  var ok = await saveParcel();
+  if (ok) {
+    listHintEl.textContent = 'Parcel added to your list.';
     listHintEl.style.display = 'block';
   }
 });
@@ -377,25 +484,10 @@ function showParcel(feature, extra) {
 
 
 detailsAddBtn.addEventListener('click', async function() {
-  if (!currentParcel) return;
-  var key = parcelKey(currentParcel);
-  var exists = parcelList.some(function(item) { return parcelKey(item) === key; });
-  if (exists) return;
-  try {
-    var payload = Object.assign({ user_id: currentUserId }, currentParcel);
-    var res = await fetch(API_BASE + '/parcels', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) throw new Error('failed to add');
-    var created = await res.json();
-    parcelList.unshift(created);
-    renderParcelList();
+  var ok = await saveParcel();
+  if (ok) {
     detailsAddBtn.classList.add('done');
     setTimeout(function() { detailsAddBtn.classList.remove('done'); }, 1500);
-  } catch (err) {
-    console.error(err);
   }
 });
 
@@ -420,7 +512,6 @@ function doClear() {
     searchBarTextEl.textContent = 'Search parcels';
     searchBarEl.classList.remove('has-result');
   }
-  addToListBtn.style.display = 'none';
   document.getElementById('sheet').value = '';
   document.getElementById('plan').value = '';
   document.getElementById('parcel').value = '';
@@ -548,7 +639,9 @@ document.querySelectorAll('#sidebar input').forEach(function(el) {
   });
 });
 
-loadParcelList();
+restoreSession();
+if (authUser) loadParcelList();
+initGoogleSignIn();
 
 map.on('moveend', function() {
   if (!currentParcel) return;
