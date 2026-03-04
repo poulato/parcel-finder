@@ -75,9 +75,35 @@
         <div id="googleSignInList"></div>
       </div>
       <div id="parcelListWrap" style="display:none;">
-        <div id="parcelListEmpty" class="parcel-list-empty">No parcels added yet.</div>
-        <div id="parcelList"></div>
+        <div id="listsContainer"></div>
+        <div id="listsEmpty" class="parcel-list-empty">No lists yet. Create one to start saving parcels.</div>
       </div>
+    </div>
+
+    <div id="saveOverlay" class="save-overlay hidden">
+      <div class="save-overlay-header">
+        <h3 class="save-panel-title">Save to list</h3>
+        <button id="saveOverlayClose" title="Close">&times;</button>
+      </div>
+      <div id="saveListPicker"></div>
+      <button id="newListBtn" class="new-list-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New List
+      </button>
+      <div id="newListForm" style="display:none;">
+        <input type="text" id="newListName" placeholder="List name" />
+        <button id="newListSave">Create</button>
+      </div>
+    </div>
+
+    <div id="viewListParcels" class="sidebar-view">
+      <button id="backToLists" class="back-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to lists
+      </button>
+      <h3 id="listParcelsTitle"></h3>
+      <div id="listParcelsEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
+      <div id="listParcels"></div>
     </div>
 
     <div id="viewDetails" class="sidebar-view">

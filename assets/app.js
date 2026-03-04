@@ -22,7 +22,7 @@ function onSignIn(response) {
   localStorage.setItem('geo_auth_token', authToken);
   localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
   updateAuthUI();
-  loadParcelList();
+  loadLists();
 }
 
 function signOut() {
@@ -30,8 +30,8 @@ function signOut() {
   authToken = null;
   localStorage.removeItem('geo_auth_token');
   localStorage.removeItem('geo_auth_user');
-  parcelList = [];
-  renderParcelList();
+  userLists = [];
+  renderLists();
   closeUserMenu();
   updateAuthUI();
   if (window.google && google.accounts) {
@@ -166,10 +166,8 @@ var sidebar = document.getElementById('sidebar');
 var openBtnMobile = document.getElementById('openBtnMobile');
 var addToListBtn = document.getElementById('addToListBtn');
 var listHintEl = document.getElementById('listHint');
-var parcelListEl = document.getElementById('parcelList');
-var parcelListEmptyEl = document.getElementById('parcelListEmpty');
-var parcelList = [];
 var currentParcel = null;
+var userLists = [];
 var API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:8787/api'
   : 'https://geoktimonas-api.hello-118.workers.dev/api';
@@ -178,38 +176,126 @@ function parcelKey(item) {
   return [item.sheet, item.plan_nbr, item.parcel_nbr, item.dist_code || ''].join('|');
 }
 
-function renderParcelList() {
-  if (!parcelList.length) {
-    parcelListEl.innerHTML = '';
-    parcelListEmptyEl.style.display = 'block';
+// --- Lists ---
+
+function renderLists() {
+  var container = document.getElementById('listsContainer');
+  var emptyEl = document.getElementById('listsEmpty');
+  if (!userLists.length) {
+    container.innerHTML = '';
+    emptyEl.style.display = 'block';
     return;
   }
-  parcelListEmptyEl.style.display = 'none';
-  parcelListEl.innerHTML = parcelList.map(function(item) {
-    var line = 'Parcel ' + item.parcel_nbr + ' • ' + item.sheet + '/' + item.plan_nbr;
-    var area = item.municipality || item.district || '—';
+  emptyEl.style.display = 'none';
+  container.innerHTML = userLists.map(function(list) {
     return (
-      '<div class="parcel-list-item">' +
-        '<div><div>' + line + '</div><div style="color:#94a3b8;">' + area + '</div></div>' +
-        '<button data-remove-id="' + item.id + '">Remove</button>' +
+      '<div class="lists-item" data-list-id="' + list.id + '">' +
+        '<div>' +
+          '<div class="lists-item-name">' + list.name + '</div>' +
+          '<div class="lists-item-count">' + (list.parcel_count || 0) + ' parcels</div>' +
+        '</div>' +
+        '<div class="lists-item-actions">' +
+          '<button data-delete-list="' + list.id + '" title="Delete list">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+          '</button>' +
+        '</div>' +
       '</div>'
     );
   }).join('');
 }
 
-async function loadParcelList() {
+async function loadLists() {
   if (!authUser) return;
   try {
-    var res = await fetch(API_BASE + '/parcels', { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error('failed to load list');
-    parcelList = await res.json();
-    renderParcelList();
+    var res = await fetch(API_BASE + '/lists', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('failed to load lists');
+    userLists = await res.json();
+    renderLists();
   } catch (err) {
     console.error(err);
   }
 }
 
-parcelListEl.addEventListener('click', async function(e) {
+async function createList(name) {
+  try {
+    var res = await fetch(API_BASE + '/lists', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders()),
+      body: JSON.stringify({ name: name })
+    });
+    if (!res.ok) throw new Error('failed to create');
+    var created = await res.json();
+    created.parcel_count = 0;
+    userLists.unshift(created);
+    renderLists();
+    return created;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
+async function deleteList(listId) {
+  try {
+    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId), {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('failed to delete');
+    userLists = userLists.filter(function(l) { return l.id !== listId; });
+    renderLists();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+document.getElementById('listsContainer').addEventListener('click', function(e) {
+  var deleteBtn = e.target.closest('[data-delete-list]');
+  if (deleteBtn) {
+    e.stopPropagation();
+    deleteList(deleteBtn.getAttribute('data-delete-list'));
+    return;
+  }
+  var item = e.target.closest('[data-list-id]');
+  if (item) {
+    openListParcels(item.getAttribute('data-list-id'));
+  }
+});
+
+async function openListParcels(listId) {
+  var list = userLists.find(function(l) { return l.id === listId; });
+  if (!list) return;
+  document.getElementById('listParcelsTitle').textContent = list.name;
+  document.getElementById('listParcels').innerHTML = '';
+  document.getElementById('listParcelsEmpty').style.display = 'none';
+  switchTab('listParcels');
+
+  try {
+    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('failed');
+    var parcels = await res.json();
+    if (!parcels.length) {
+      document.getElementById('listParcelsEmpty').style.display = 'block';
+      return;
+    }
+    document.getElementById('listParcels').innerHTML = parcels.map(function(item) {
+      var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+      var area = item.municipality || item.district || '\u2014';
+      return (
+        '<div class="parcel-list-item">' +
+          '<div><div>' + line + '</div><div style="color:#94a3b8;">' + area + '</div></div>' +
+          '<button data-remove-id="' + item.id + '">Remove</button>' +
+        '</div>'
+      );
+    }).join('');
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+document.getElementById('listParcels').addEventListener('click', async function(e) {
   var id = e.target.getAttribute('data-remove-id');
   if (!id) return;
   try {
@@ -218,57 +304,111 @@ parcelListEl.addEventListener('click', async function(e) {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('failed to remove');
-    parcelList = parcelList.filter(function(item) { return item.id !== id; });
-    renderParcelList();
-    listHintEl.textContent = 'Parcel removed from list.';
-    listHintEl.style.display = 'block';
+    e.target.closest('.parcel-list-item').remove();
+    var remaining = document.getElementById('listParcels').children.length;
+    if (!remaining) document.getElementById('listParcelsEmpty').style.display = 'block';
+    await loadLists();
   } catch (err) {
     console.error(err);
-    listHintEl.textContent = 'Failed to remove parcel.';
-    listHintEl.style.display = 'block';
   }
 });
 
-async function saveParcel() {
-  if (!currentParcel) return;
-  if (!authUser) { handleAuthClick(); return; }
-  var key = parcelKey(currentParcel);
-  var exists = parcelList.some(function(item) { return parcelKey(item) === key; });
-  if (exists) {
-    listHintEl.textContent = 'Parcel already in your list.';
-    listHintEl.style.display = 'block';
+document.getElementById('backToLists').addEventListener('click', function() {
+  switchTab('list');
+});
+
+// --- Save panel ---
+
+function renderSavePanel() {
+  var picker = document.getElementById('saveListPicker');
+  if (!userLists.length) {
+    picker.innerHTML = '<div style="color:#64748b; font-size:12px; margin-bottom:8px;">No lists yet. Create one below.</div>';
     return;
   }
+  picker.innerHTML = userLists.map(function(list) {
+    return (
+      '<div class="save-list-item" data-save-to="' + list.id + '">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' +
+        list.name +
+      '</div>'
+    );
+  }).join('');
+}
+
+function openSavePanel() {
+  if (!authUser) { handleAuthClick(); return; }
+  renderSavePanel();
+  document.getElementById('newListForm').style.display = 'none';
+  document.getElementById('saveOverlay').classList.remove('hidden');
+}
+
+function closeSavePanel() {
+  document.getElementById('saveOverlay').classList.add('hidden');
+}
+
+document.getElementById('saveListPicker').addEventListener('click', async function(e) {
+  var item = e.target.closest('[data-save-to]');
+  if (!item || !currentParcel) return;
+  var listId = item.getAttribute('data-save-to');
   try {
     var headers = Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders());
-    var res = await fetch(API_BASE + '/parcels', {
+    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(currentParcel)
     });
-    if (!res.ok) throw new Error('failed to add');
-    var created = await res.json();
-    parcelList.unshift(created);
-    renderParcelList();
-    return true;
+    if (res.status === 409) {
+      item.classList.add('saved');
+      item.textContent = 'Already saved';
+      return;
+    }
+    if (!res.ok) throw new Error('failed');
+    item.classList.add('saved');
+    var origText = item.innerHTML;
+    item.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
+    await loadLists();
+    setTimeout(function() { closeSavePanel(); }, 800);
   } catch (err) {
     console.error(err);
-    return false;
   }
-}
+});
 
-addToListBtn.addEventListener('click', async function() {
-  var ok = await saveParcel();
-  if (ok) {
-    listHintEl.textContent = 'Parcel added to your list.';
-    listHintEl.style.display = 'block';
+document.getElementById('newListBtn').addEventListener('click', function() {
+  var form = document.getElementById('newListForm');
+  form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  if (form.style.display === 'flex') {
+    document.getElementById('newListName').value = '';
+    document.getElementById('newListName').focus();
   }
+});
+
+document.getElementById('newListSave').addEventListener('click', async function() {
+  var name = document.getElementById('newListName').value.trim();
+  if (!name) return;
+  var created = await createList(name);
+  if (created) {
+    document.getElementById('newListForm').style.display = 'none';
+    renderSavePanel();
+  }
+});
+
+document.getElementById('newListName').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('newListSave').click(); }
+});
+
+document.getElementById('saveOverlayClose').addEventListener('click', function() {
+  closeSavePanel();
+});
+
+addToListBtn.addEventListener('click', function() {
+  openSavePanel();
 });
 
 var backdropEl = document.getElementById('backdrop');
 
 function closeSidebar() {
   sidebar.classList.add('hidden');
+  closeSavePanel();
   backdropEl.classList.remove('visible');
   if (isMobile()) {
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
@@ -285,7 +425,8 @@ function openSidebar() {
 function isMobile() { return window.innerWidth <= 640; }
 
 function openSearchPanel() {
-  switchTab('search');
+  var tab = currentParcel ? 'details' : 'search';
+  switchTab(tab);
   if (isMobile()) {
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
     var mobileBtn = document.querySelector('.bottom-tab[data-tab="search"]');
@@ -378,6 +519,8 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
 
 var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4], 9);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+L.DomEvent.disableClickPropagation(sidebar);
 
 var topoBase = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -525,12 +668,8 @@ function showParcel(feature, extra) {
 }
 
 
-detailsAddBtn.addEventListener('click', async function() {
-  var ok = await saveParcel();
-  if (ok) {
-    detailsAddBtn.classList.add('done');
-    setTimeout(function() { detailsAddBtn.classList.remove('done'); }, 1500);
-  }
+detailsAddBtn.addEventListener('click', function() {
+  openSavePanel();
 });
 
 detailsShareBtn.addEventListener('click', function() {
@@ -700,7 +839,7 @@ document.addEventListener('click', function(e) {
 });
 
 restoreSession();
-if (authUser) loadParcelList();
+if (authUser) loadLists();
 initGoogleSignIn();
 
 map.on('moveend', function() {

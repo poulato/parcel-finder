@@ -100,26 +100,88 @@ export default {
       return json(user);
     }
 
-    if (path === "/api/parcels" && request.method === "GET") {
+    // --- Lists ---
+
+    if (path === "/api/lists" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const { results } = await env.DB.prepare(
-        `SELECT id, user_id, sheet, plan_nbr, parcel_nbr, dist_code,
-                district, municipality, planning_zone, planning_zone_desc,
-                block_code, created_at
-         FROM saved_parcels
-         WHERE user_id = ?
-         ORDER BY datetime(created_at) DESC`
+        `SELECT l.id, l.name, l.created_at, COUNT(p.id) as parcel_count
+         FROM lists l
+         LEFT JOIN saved_parcels p ON p.list_id = l.id
+         WHERE l.user_id = ?
+         GROUP BY l.id
+         ORDER BY datetime(l.created_at) DESC`
       ).bind(user.id).all();
 
       return json(results || []);
     }
 
-    if (path === "/api/parcels" && request.method === "POST") {
+    if (path === "/api/lists" && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
 
+      const body = await request.json().catch(() => null);
+      if (!body || !body.name) return json({ error: "name is required" }, 400);
+
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO lists (id, user_id, name) VALUES (?, ?, ?)`
+      ).bind(id, user.id, body.name.trim()).run();
+
+      const { results } = await env.DB.prepare(
+        `SELECT id, name, created_at FROM lists WHERE id = ?`
+      ).bind(id).all();
+
+      return json(results?.[0] || { id, name: body.name.trim() }, 201);
+    }
+
+    if (path.startsWith("/api/lists/") && !path.includes("/parcels") && request.method === "DELETE") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const listId = decodeURIComponent(path.replace("/api/lists/", ""));
+      if (!listId) return json({ error: "list id is required" }, 400);
+
+      // Delete parcels in the list first, then the list
+      await env.DB.prepare(
+        `DELETE FROM saved_parcels WHERE list_id = ? AND user_id = ?`
+      ).bind(listId, user.id).run();
+
+      const { meta } = await env.DB.prepare(
+        `DELETE FROM lists WHERE id = ? AND user_id = ?`
+      ).bind(listId, user.id).run();
+
+      if (!meta || !meta.changes) return json({ error: "List not found" }, 404);
+      return json({ ok: true });
+    }
+
+    // --- Parcels ---
+
+    if (path.match(/^\/api\/lists\/[^/]+\/parcels$/) && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
+
+      const { results } = await env.DB.prepare(
+        `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
+                district, municipality, planning_zone, planning_zone_desc,
+                block_code, created_at
+         FROM saved_parcels
+         WHERE list_id = ? AND user_id = ?
+         ORDER BY datetime(created_at) DESC`
+      ).bind(listId, user.id).all();
+
+      return json(results || []);
+    }
+
+    if (path.match(/^\/api\/lists\/[^/]+\/parcels$/) && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid JSON body" }, 400);
       if (!body.sheet || !body.plan_nbr || !body.parcel_nbr) {
@@ -127,46 +189,37 @@ export default {
       }
 
       const id = crypto.randomUUID();
-      const stmt = env.DB.prepare(
-        `INSERT INTO saved_parcels (
-          id, user_id, sheet, plan_nbr, parcel_nbr, dist_code,
-          district, municipality, planning_zone, planning_zone_desc, block_code
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        id,
-        user.id,
-        body.sheet,
-        body.plan_nbr,
-        body.parcel_nbr,
-        body.dist_code ?? null,
-        body.district ?? null,
-        body.municipality ?? null,
-        body.planning_zone ?? null,
-        body.planning_zone_desc ?? null,
-        body.block_code ?? null
-      );
-
       try {
-        await stmt.run();
+        await env.DB.prepare(
+          `INSERT INTO saved_parcels (
+            id, user_id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
+            district, municipality, planning_zone, planning_zone_desc, block_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          id, user.id, listId,
+          body.sheet, body.plan_nbr, body.parcel_nbr,
+          body.dist_code ?? null, body.district ?? null,
+          body.municipality ?? null, body.planning_zone ?? null,
+          body.planning_zone_desc ?? null, body.block_code ?? null
+        ).run();
       } catch (err) {
         if (String(err).includes("UNIQUE")) {
-          return json({ error: "Parcel already exists in your list" }, 409);
+          return json({ error: "Parcel already exists in this list" }, 409);
         }
         return json({ error: "Failed to save parcel", details: String(err) }, 500);
       }
 
       const { results } = await env.DB.prepare(
-        `SELECT id, user_id, sheet, plan_nbr, parcel_nbr, dist_code,
+        `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, planning_zone, planning_zone_desc,
                 block_code, created_at
-         FROM saved_parcels
-         WHERE id = ?`
+         FROM saved_parcels WHERE id = ?`
       ).bind(id).all();
 
       return json(results?.[0] || { id }, 201);
     }
 
-    if (path.startsWith("/api/parcels/") && request.method === "DELETE") {
+    if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
 
