@@ -8,7 +8,7 @@ function json(data, status = 200) {
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
@@ -107,7 +107,7 @@ export default {
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const { results } = await env.DB.prepare(
-        `SELECT l.id, l.name, l.created_at, COUNT(p.id) as parcel_count
+        `SELECT l.id, l.name, l.visibility, l.share_token, l.created_at, COUNT(p.id) as parcel_count
          FROM lists l
          LEFT JOIN saved_parcels p ON p.list_id = l.id
          WHERE l.user_id = ?
@@ -155,6 +155,83 @@ export default {
 
       if (!meta || !meta.changes) return json({ error: "List not found" }, 404);
       return json({ ok: true });
+    }
+
+    if (path.match(/^\/api\/lists\/[^/]+$/) && request.method === "PUT") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
+      const body = await request.json().catch(() => null);
+      if (!body) return json({ error: "Invalid body" }, 400);
+
+      const updates = [];
+      const binds = [];
+
+      if (body.name && body.name.trim()) {
+        updates.push("name = ?");
+        binds.push(body.name.trim());
+      }
+
+      if (body.visibility !== undefined) {
+        const allowed = ["private", "public"];
+        if (!allowed.includes(body.visibility)) {
+          return json({ error: "visibility must be private or public" }, 400);
+        }
+        updates.push("visibility = ?");
+        binds.push(body.visibility);
+
+        if (body.visibility === "public") {
+          const existing = await env.DB.prepare(
+            `SELECT share_token FROM lists WHERE id = ? AND user_id = ?`
+          ).bind(listId, user.id).first();
+          if (existing && !existing.share_token) {
+            const token = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+            updates.push("share_token = ?");
+            binds.push(token);
+          }
+        } else if (body.visibility === "private") {
+          updates.push("share_token = NULL");
+        }
+      }
+
+      if (!updates.length) return json({ error: "Nothing to update" }, 400);
+
+      binds.push(listId, user.id);
+      const { meta } = await env.DB.prepare(
+        `UPDATE lists SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`
+      ).bind(...binds).run();
+
+      if (!meta || !meta.changes) return json({ error: "List not found" }, 404);
+
+      const updated = await env.DB.prepare(
+        `SELECT id, name, visibility, share_token FROM lists WHERE id = ?`
+      ).bind(listId).first();
+      return json(updated || { ok: true });
+    }
+
+    // --- Shared / Public lists ---
+
+    if (path.match(/^\/api\/shared\/[^/]+$/) && request.method === "GET") {
+      const token = decodeURIComponent(path.split("/")[3]);
+      const list = await env.DB.prepare(
+        `SELECT l.id, l.name, l.visibility, l.user_id FROM lists l WHERE l.share_token = ? AND l.visibility = 'public'`
+      ).bind(token).first();
+
+      if (!list) return json({ error: "List not found or not public" }, 404);
+
+      const { results: parcels } = await env.DB.prepare(
+        `SELECT id, sheet, plan_nbr, parcel_nbr, dist_code, district, municipality,
+                planning_zone, planning_zone_desc, block_code, created_at
+         FROM saved_parcels WHERE list_id = ?
+         ORDER BY datetime(created_at) DESC`
+      ).bind(list.id).all();
+
+      return json({
+        id: list.id,
+        name: list.name,
+        parcels: parcels || []
+      });
     }
 
     // --- Parcels ---

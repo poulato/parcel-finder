@@ -1,158 +1,8 @@
-var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
-var GOOGLE_CLIENT_ID = '284743039293-0lo05gnap8immcls45hqsniv16djtdap.apps.googleusercontent.com';
+var API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:8788/api'
+  : 'https://geoktimonas-api.hello-118.workers.dev/api';
 
-var authUser = null;
-var authToken = null;
-var parcelSavedLists = [];
-
-function getAuthHeaders() {
-  if (!authToken) return {};
-  return { 'Authorization': 'Bearer ' + authToken };
-}
-
-function onSignIn(response) {
-  authToken = response.credential;
-  var parts = authToken.split('.');
-  var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-  authUser = {
-    id: payload.sub,
-    email: payload.email,
-    name: payload.name,
-    picture: payload.picture
-  };
-  localStorage.setItem('geo_auth_token', authToken);
-  localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
-  updateAuthUI();
-  loadLists();
-  if (currentParcel) checkParcelSaved();
-}
-
-function signOut() {
-  authUser = null;
-  authToken = null;
-  localStorage.removeItem('geo_auth_token');
-  localStorage.removeItem('geo_auth_user');
-  userLists = [];
-  renderLists();
-  closeUserMenu();
-  updateAuthUI();
-  if (window.google && google.accounts) {
-    google.accounts.id.disableAutoSelect();
-  }
-}
-
-function toggleUserMenu() {
-  var menu = document.getElementById('userMenu');
-  menu.classList.toggle('hidden');
-}
-
-function closeUserMenu() {
-  document.getElementById('userMenu').classList.add('hidden');
-}
-
-function handleAuthClick() {
-  if (authUser) {
-    toggleUserMenu();
-    return;
-  }
-  var container = document.getElementById('googleSignInDiv');
-  var gBtn = container && (container.querySelector('[role="button"]') || container.querySelector('div[style]'));
-  if (gBtn) {
-    gBtn.click();
-  } else if (window.google && google.accounts) {
-    google.accounts.id.prompt();
-  }
-}
-
-function updateAuthUI() {
-  var mobileIcon = document.getElementById('authBtnIcon');
-  var mobileAvatar = document.getElementById('authBtnAvatar');
-  var desktopIcon = document.getElementById('authBtnDesktopIcon');
-  var desktopAvatar = document.getElementById('authBtnDesktopAvatar');
-  var desktopText = document.getElementById('authBtnDesktopText');
-  var listAuthPrompt = document.getElementById('listAuthPrompt');
-  var parcelListWrap = document.getElementById('parcelListWrap');
-
-  if (authUser) {
-    mobileIcon.style.display = 'none';
-    mobileAvatar.src = authUser.picture;
-    mobileAvatar.style.display = 'block';
-    desktopIcon.style.display = 'none';
-    desktopAvatar.src = authUser.picture;
-    desktopAvatar.style.display = 'block';
-    desktopText.textContent = authUser.name.split(' ')[0];
-    listAuthPrompt.style.display = 'none';
-    parcelListWrap.style.display = 'block';
-    document.getElementById('userMenuAvatar').src = authUser.picture;
-    document.getElementById('userMenuName').textContent = authUser.name;
-    document.getElementById('userMenuEmail').textContent = authUser.email;
-  } else {
-    mobileIcon.style.display = '';
-    mobileAvatar.style.display = 'none';
-    desktopIcon.style.display = '';
-    desktopAvatar.style.display = 'none';
-    desktopText.textContent = 'Sign in';
-    listAuthPrompt.style.display = '';
-    parcelListWrap.style.display = 'none';
-  }
-}
-
-function restoreSession() {
-  var token = localStorage.getItem('geo_auth_token');
-  var user = localStorage.getItem('geo_auth_user');
-  if (token && user) {
-    try {
-      authUser = JSON.parse(user);
-      var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      if (payload.exp * 1000 > Date.now()) {
-        authToken = token;
-      }
-      updateAuthUI();
-      return true;
-    } catch (e) {
-      authUser = null;
-      authToken = null;
-      localStorage.removeItem('geo_auth_token');
-      localStorage.removeItem('geo_auth_user');
-    }
-  }
-  return false;
-}
-
-function initGoogleSignIn() {
-  if (!window.google || !google.accounts) {
-    setTimeout(initGoogleSignIn, 200);
-    return;
-  }
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: onSignIn,
-    auto_select: true,
-  });
-  var container = document.getElementById('googleSignInDiv');
-  if (container) {
-    google.accounts.id.renderButton(container, {
-      type: 'standard',
-      size: 'large',
-      theme: 'filled_black',
-      text: 'signin_with',
-      width: 250,
-    });
-  }
-  var listContainer = document.getElementById('googleSignInList');
-  if (listContainer) {
-    google.accounts.id.renderButton(listContainer, {
-      type: 'standard',
-      size: 'large',
-      theme: 'filled_black',
-      text: 'signin_with',
-      width: 250,
-    });
-  }
-  if (!authToken) {
-    google.accounts.id.prompt();
-  }
-}
+// --- Sidebar & Navigation ---
 
 function switchTab(tabName) {
   document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
@@ -168,326 +18,10 @@ document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
 });
 
 var sidebar = document.getElementById('sidebar');
-var openBtnMobile = document.getElementById('openBtnMobile');
 var addToListBtn = document.getElementById('addToListBtn');
-var listHintEl = document.getElementById('listHint');
-var currentParcel = null;
-var userLists = [];
-var API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:8788/api'
-  : 'https://geoktimonas-api.hello-118.workers.dev/api';
-
-function parcelKey(item) {
-  return [item.sheet, item.plan_nbr, item.parcel_nbr, item.dist_code || ''].join('|');
-}
-
-// --- Lists ---
-
-function renderLists() {
-  var container = document.getElementById('listsContainer');
-  var emptyEl = document.getElementById('listsEmpty');
-  if (!userLists.length) {
-    container.innerHTML = '';
-    emptyEl.style.display = 'block';
-    return;
-  }
-  emptyEl.style.display = 'none';
-  container.innerHTML = userLists.map(function(list) {
-    return (
-      '<div class="lists-item" data-list-id="' + list.id + '">' +
-        '<div>' +
-          '<div class="lists-item-name">' + list.name + '</div>' +
-          '<div class="lists-item-count">' + (list.parcel_count || 0) + ' parcels</div>' +
-        '</div>' +
-        '<div class="lists-item-actions">' +
-          '<button data-delete-list="' + list.id + '" title="Delete list">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
-          '</button>' +
-        '</div>' +
-      '</div>'
-    );
-  }).join('');
-}
-
-async function loadLists() {
-  if (!authUser) return;
-  try {
-    var res = await fetch(API_BASE + '/lists', { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error('failed to load lists');
-    userLists = await res.json();
-    renderLists();
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-async function createList(name) {
-  try {
-    var res = await fetch(API_BASE + '/lists', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders()),
-      body: JSON.stringify({ name: name })
-    });
-    if (!res.ok) throw new Error('failed to create');
-    var created = await res.json();
-    created.parcel_count = 0;
-    userLists.unshift(created);
-    renderLists();
-    return created;
-  } catch (err) {
-    console.error(err);
-    return null;
-  }
-}
-
-async function deleteList(listId) {
-  try {
-    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId), {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    });
-    if (!res.ok) throw new Error('failed to delete');
-    userLists = userLists.filter(function(l) { return l.id !== listId; });
-    renderLists();
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-document.getElementById('listsContainer').addEventListener('click', function(e) {
-  var deleteBtn = e.target.closest('[data-delete-list]');
-  if (deleteBtn) {
-    e.stopPropagation();
-    deleteList(deleteBtn.getAttribute('data-delete-list'));
-    return;
-  }
-  var item = e.target.closest('[data-list-id]');
-  if (item) {
-    openListParcels(item.getAttribute('data-list-id'));
-  }
-});
-
-async function openListParcels(listId) {
-  var list = userLists.find(function(l) { return l.id === listId; });
-  if (!list) return;
-  document.getElementById('listParcelsTitle').textContent = list.name;
-  document.getElementById('listParcels').innerHTML = '';
-  document.getElementById('listParcelsEmpty').style.display = 'none';
-  switchTab('listParcels');
-
-  try {
-    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', {
-      headers: getAuthHeaders()
-    });
-    if (!res.ok) throw new Error('failed');
-    var parcels = await res.json();
-    if (!parcels.length) {
-      document.getElementById('listParcelsEmpty').style.display = 'block';
-      return;
-    }
-    document.getElementById('listParcels').innerHTML = parcels.map(function(item) {
-      var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
-      var area = item.municipality || item.district || '\u2014';
-      return (
-        '<div class="parcel-list-item">' +
-          '<div><div>' + line + '</div><div style="color:#94a3b8;">' + area + '</div></div>' +
-          '<button data-remove-id="' + item.id + '">Remove</button>' +
-        '</div>'
-      );
-    }).join('');
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-document.getElementById('listParcels').addEventListener('click', async function(e) {
-  var id = e.target.getAttribute('data-remove-id');
-  if (!id) return;
-  try {
-    var res = await fetch(API_BASE + '/parcels/' + encodeURIComponent(id), {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    });
-    if (!res.ok) throw new Error('failed to remove');
-    e.target.closest('.parcel-list-item').remove();
-    var remaining = document.getElementById('listParcels').children.length;
-    if (!remaining) document.getElementById('listParcelsEmpty').style.display = 'block';
-    await loadLists();
-  } catch (err) {
-    console.error(err);
-  }
-});
-
-document.getElementById('backToLists').addEventListener('click', function() {
-  switchTab('list');
-});
-
-// --- Save panel ---
-
-async function checkParcelSaved() {
-  parcelSavedLists = [];
-  if (!authUser || !currentParcel) { updateSaveButton(); return; }
-  try {
-    var qs = 'sheet=' + encodeURIComponent(currentParcel.sheet) +
-      '&plan_nbr=' + encodeURIComponent(currentParcel.plan_nbr) +
-      '&parcel_nbr=' + encodeURIComponent(currentParcel.parcel_nbr);
-    if (currentParcel.dist_code) qs += '&dist_code=' + encodeURIComponent(currentParcel.dist_code);
-    var res = await fetch(API_BASE + '/parcels/check?' + qs, { headers: getAuthHeaders() });
-    if (res.ok) parcelSavedLists = await res.json();
-  } catch (e) { /* silent */ }
-  updateSaveButton();
-}
-
-function updateSaveButton() {
-  var btn = document.getElementById('detailsAddBtn');
-  var label = btn.parentElement.querySelector('.action-label');
-  if (parcelSavedLists.length > 0) {
-    btn.classList.add('is-saved');
-    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-    label.textContent = 'Saved';
-  } else {
-    btn.classList.remove('is-saved');
-    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-    label.textContent = 'Save';
-  }
-}
-
-function renderSavePanel() {
-  var picker = document.getElementById('saveListPicker');
-  if (!userLists.length) {
-    picker.innerHTML = '<div style="color:#64748b; font-size:12px; margin-bottom:8px;">No lists yet. Create one below.</div>';
-    return;
-  }
-  picker.innerHTML = userLists.map(function(list) {
-    var isSaved = parcelSavedLists.indexOf(list.id) !== -1;
-    var icon = isSaved
-      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>'
-      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-    var check = isSaved
-      ? '<svg class="save-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5a0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-      : '';
-    return (
-      '<div class="save-list-item' + (isSaved ? ' saved' : '') + '" data-save-to="' + list.id + '">' +
-        icon +
-        '<span class="save-list-name">' + list.name + '</span>' +
-        check +
-      '</div>'
-    );
-  }).join('');
-}
-
-async function openSavePanel() {
-  if (!authUser) { handleAuthClick(); return; }
-  await checkParcelSaved();
-  var title = document.querySelector('.save-panel-title');
-  title.textContent = parcelSavedLists.length > 0 ? 'Saved in your lists' : 'Save to list';
-  renderSavePanel();
-  document.getElementById('saveOverlay').classList.remove('hidden');
-}
-
-function closeSavePanel() {
-  document.getElementById('saveOverlay').classList.add('hidden');
-}
-
-document.getElementById('saveListPicker').addEventListener('click', async function(e) {
-  var item = e.target.closest('[data-save-to]');
-  if (!item || !currentParcel) return;
-  var listId = item.getAttribute('data-save-to');
-  var isSaved = item.classList.contains('saved');
-
-  if (isSaved) {
-    try {
-      var parcelsRes = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', { headers: getAuthHeaders() });
-      if (!parcelsRes.ok) throw new Error('failed');
-      var parcels = await parcelsRes.json();
-      var norm = function(s) { return String(s == null ? '' : s).replace(/\.0$/, ''); };
-      var match = parcels.find(function(p) {
-        return norm(p.sheet) === norm(currentParcel.sheet) &&
-          norm(p.plan_nbr) === norm(currentParcel.plan_nbr) &&
-          norm(p.parcel_nbr) === norm(currentParcel.parcel_nbr) &&
-          String(p.dist_code || '') == String(currentParcel.dist_code || '');
-      });
-      if (match) {
-        var delRes = await fetch(API_BASE + '/parcels/' + encodeURIComponent(match.id), {
-          method: 'DELETE', headers: getAuthHeaders()
-        });
-        if (!delRes.ok) throw new Error('failed');
-      }
-      await loadLists();
-      await checkParcelSaved();
-      renderSavePanel();
-    } catch (err) { console.error(err); }
-    return;
-  }
-
-  try {
-    var headers = Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders());
-    var res = await fetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(currentParcel)
-    });
-    if (res.status === 409) {
-      parcelSavedLists.push(listId);
-      updateSaveButton();
-      renderSavePanel();
-      return;
-    }
-    if (!res.ok) throw new Error('failed');
-    await loadLists();
-    parcelSavedLists.push(listId);
-    updateSaveButton();
-    renderSavePanel();
-  } catch (err) {
-    console.error(err);
-  }
-});
-
-function openNewListModal() {
-  document.getElementById('newListName').value = '';
-  document.getElementById('newListModal').classList.remove('hidden');
-  setTimeout(function() { document.getElementById('newListName').focus(); }, 50);
-}
-
-function closeNewListModal() {
-  document.getElementById('newListModal').classList.add('hidden');
-}
-
-document.getElementById('newListBtn').addEventListener('click', function() {
-  openNewListModal();
-});
-
-document.getElementById('newListCancel').addEventListener('click', function() {
-  closeNewListModal();
-});
-
-document.getElementById('newListModal').addEventListener('click', function(e) {
-  if (e.target === this) closeNewListModal();
-});
-
-document.getElementById('newListSave').addEventListener('click', async function() {
-  var name = document.getElementById('newListName').value.trim();
-  if (!name) return;
-  var created = await createList(name);
-  if (created) {
-    closeNewListModal();
-    renderSavePanel();
-  }
-});
-
-document.getElementById('newListName').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('newListSave').click(); }
-});
-
-document.getElementById('saveOverlayClose').addEventListener('click', function() {
-  closeSavePanel();
-});
-
-addToListBtn.addEventListener('click', function() {
-  openSavePanel();
-});
-
 var backdropEl = document.getElementById('backdrop');
+
+function isMobile() { return window.innerWidth <= 640; }
 
 function closeSidebar() {
   sidebar.classList.add('hidden');
@@ -500,12 +34,12 @@ function closeSidebar() {
   }
   setTimeout(function() { map.invalidateSize(); }, 300);
 }
+
 function openSidebar() {
   sidebar.classList.remove('hidden');
   if (isMobile()) backdropEl.classList.add('visible');
   setTimeout(function() { map.invalidateSize(); }, 300);
 }
-function isMobile() { return window.innerWidth <= 640; }
 
 function openSearchPanel() {
   var tab = currentParcel ? 'details' : 'search';
@@ -522,6 +56,7 @@ function openSearchPanel() {
   openSidebar();
 }
 
+// --- Bottom tabs (mobile) ---
 document.querySelectorAll('.bottom-tab').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var tab = this.getAttribute('data-tab');
@@ -535,6 +70,7 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
       return;
     }
 
+    if (tab === 'list') doClear();
     switchTab(tab);
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
@@ -542,6 +78,7 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
   });
 });
 
+// --- Rail buttons (desktop) ---
 document.querySelectorAll('.rail-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var tab = this.getAttribute('data-tab');
@@ -555,6 +92,7 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
       return;
     }
 
+    if (tab === 'list') doClear();
     switchTab(tab);
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
@@ -562,6 +100,7 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
   });
 });
 
+// --- Touch drag to dismiss (mobile) ---
 (function() {
   var startY = 0;
   var currentY = 0;
@@ -569,7 +108,6 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
 
   sidebar.addEventListener('touchstart', function(e) {
     if (!isMobile() || sidebar.classList.contains('hidden')) return;
-    var el = e.target;
     var scrollable = sidebar;
     if (scrollable.scrollTop > 0) return;
     startY = e.touches[0].clientY;
@@ -600,312 +138,22 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
   });
 })();
 
-var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4], 9);
-L.control.zoom({ position: 'bottomright' }).addTo(map);
-
+// --- Prevent map clicks through sidebar ---
 L.DomEvent.disableClickPropagation(sidebar);
 
-var topoBase = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-  { attribution: 'Esri', maxZoom: 19 }
-).addTo(map);
-
-var satellite = L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { attribution: 'Esri', maxZoom: 19 }
-);
-
-var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
-
-var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }, null, { position: 'bottomleft' }).addTo(map);
-var parcelLayer = null;
-
-function showError(msg) {
-  var el = document.getElementById('errorMsg');
-  el.textContent = msg;
-  el.style.display = msg ? 'block' : 'none';
-}
-
-function dlsQuery(layerId, params) {
-  params.f = 'json';
-  var qs = Object.keys(params).map(function(k) {
-    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
-  }).join('&');
-  return fetch(DLS_BASE + '/' + layerId + '/query?' + qs).then(function(r) { return r.json(); });
-}
-
-function findParcel(sheet, plan, parcelNbr, distCode) {
-  var where = "PARCEL_NBR=" + parcelNbr + " AND SHEET='" + sheet + "' AND PLAN_NBR='" + plan + "'";
-  if (distCode) where += " AND DIST_CODE=" + distCode;
-  return dlsQuery(0, {
-    where: where,
-    outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
-    returnGeometry: 'true',
-    outSR: '4326'
-  });
-}
-
-function findParcelByCoords(lat, lng) {
-  return dlsQuery(0, {
-    geometry: lng + ',' + lat,
-    geometryType: 'esriGeometryPoint',
-    inSR: '4326',
-    spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
-    returnGeometry: 'true',
-    outSR: '4326'
-  });
-}
-
-function spatialLookup(layerId, outFields, lat, lng) {
-  return dlsQuery(layerId, {
-    geometry: lng + ',' + lat,
-    geometryType: 'esriGeometryPoint',
-    inSR: '4326',
-    spatialRel: 'esriSpatialRelIntersects',
-    outFields: outFields,
-    returnGeometry: 'false'
-  });
-}
-
-function enrich(lat, lng) {
-  return Promise.all([
-    spatialLookup(12, 'PLNZNT_NAME,PLNZNT_DESC', lat, lng),
-    spatialLookup(16, 'VIL_NM_E', lat, lng),
-    spatialLookup(15, 'DIST_NM_E', lat, lng)
-  ]).then(function(results) {
-    var zone = results[0].features && results[0].features[0] ? results[0].features[0].attributes : {};
-    var muni = results[1].features && results[1].features[0] ? results[1].features[0].attributes : {};
-    var dist = results[2].features && results[2].features[0] ? results[2].features[0].attributes : {};
-    return {
-      planning_zone: zone.PLNZNT_NAME || '—',
-      planning_zone_desc: zone.PLNZNT_DESC || '—',
-      municipality: muni.VIL_NM_E || '—',
-      district: dist.DIST_NM_E || '—'
-    };
-  });
-}
-
-function centroid(rings) {
-  var ring = rings[0], n = ring.length, latSum = 0, lngSum = 0;
-  for (var i = 0; i < n; i++) { latSum += ring[i][1]; lngSum += ring[i][0]; }
-  return [latSum / n, lngSum / n];
-}
-
-var detailsContentEl = document.getElementById('detailsContent');
-var detailsActionsEl = document.getElementById('detailsActions');
-var detailsAddBtn = document.getElementById('detailsAddBtn');
-var detailsShareBtn = document.getElementById('detailsShareBtn');
-
-function buildParcelHTML(attrs, extra) {
-  return '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
-    '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '—') + '</span></div>' +
-    '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
-    '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
-    '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
-    '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
-    '<div><span class="label">Zone Detail:</span> <span class="value">' + extra.planning_zone_desc + '</span></div>';
-}
-
-function showParcel(feature, extra) {
-  if (parcelLayer) { map.removeLayer(parcelLayer); }
-
-  var attrs = feature.attributes;
-  var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
-  currentParcel = {
-    sheet: clean(attrs.SHEET),
-    plan_nbr: clean(attrs.PLAN_NBR),
-    parcel_nbr: clean(attrs.PARCEL_NBR),
-    dist_code: attrs.DIST_CODE || null,
-    district: extra.district || '',
-    municipality: extra.municipality || '',
-    planning_zone: extra.planning_zone || '',
-    planning_zone_desc: extra.planning_zone_desc || '',
-    block_code: attrs.BLCK_CODE || ''
-  };
-  var rings = feature.geometry.rings;
-  var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
-
-  parcelLayer = L.polygon(coords, {
-    color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
-  }).addTo(map);
-
-  var html = buildParcelHTML(attrs, extra);
-
-  detailsContentEl.innerHTML = html;
-  detailsActionsEl.style.display = 'flex';
-  parcelSavedLists = [];
-  updateSaveButton();
-  checkParcelSaved();
-  switchTab('details');
-  if (isMobile()) {
-    document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
-  } else {
-    document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
-  }
-  if (sidebar.classList.contains('hidden')) openSidebar();
-
-  var searchBarEl = document.getElementById('searchBar');
-  var searchBarTextEl = document.getElementById('searchBarText');
-  if (searchBarEl && searchBarTextEl) {
-    searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' • ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
-    searchBarEl.classList.add('has-result');
-  }
-}
-
-
-detailsAddBtn.addEventListener('click', function() {
+// --- Add-to-list button in sidebar header ---
+addToListBtn.addEventListener('click', function() {
   openSavePanel();
 });
 
-detailsShareBtn.addEventListener('click', function() {
-  var url = window.location.href;
-  if (navigator.share) {
-    navigator.share({ title: 'Parcel', url: url }).catch(function() {});
-  } else if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(function() {
-      detailsShareBtn.classList.add('done');
-      setTimeout(function() { detailsShareBtn.classList.remove('done'); }, 1500);
-    });
-  }
-});
-
-function doClear() {
-  if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
-  currentParcel = null;
-  var searchBarEl = document.getElementById('searchBar');
-  var searchBarTextEl = document.getElementById('searchBarText');
-  if (searchBarEl && searchBarTextEl) {
-    searchBarTextEl.textContent = 'Search parcels';
-    searchBarEl.classList.remove('has-result');
-  }
-  document.getElementById('sheet').value = '';
-  document.getElementById('plan').value = '';
-  document.getElementById('parcel').value = '';
-  document.getElementById('district').value = '';
-  showError('');
-  history.replaceState(null, '', window.location.pathname);
-  map.setView([35.0, 33.4], 9);
-}
-
-function updateURL(sheet, plan, parcelNbr, distCode) {
-  var params = new URLSearchParams();
-  params.set('sheet', sheet);
-  params.set('plan', plan);
-  params.set('parcel', parcelNbr);
-  if (distCode) params.set('district', distCode);
-  var c = map.getCenter();
-  params.set('lat', c.lat.toFixed(6));
-  params.set('lng', c.lng.toFixed(6));
-  params.set('z', map.getZoom());
-  history.replaceState(null, '', '?' + params.toString());
-}
-
-function doSearch() {
-  var sheet = document.getElementById('sheet').value.trim();
-  var plan = document.getElementById('plan').value.trim();
-  var parcelNbr = document.getElementById('parcel').value.trim();
-  var distCode = document.getElementById('district').value;
-
-  showError('');
-
-  if (!sheet || !plan || !parcelNbr) {
-    showError('Fill in Sheet, Plan, and Parcel.');
-    return;
-  }
-
-  var btn = document.getElementById('searchBtn');
-  btn.disabled = true;
-  btn.textContent = 'Searching...';
-
-  findParcel(sheet, plan, parcelNbr, distCode)
-    .then(function(data) {
-      var features = data.features || [];
-      if (!features.length) {
-        showError('No parcel found. Check the values.');
-        btn.disabled = false;
-        btn.textContent = 'Find Parcel';
-        return;
-      }
-      var feature = features[0];
-      var center = centroid(feature.geometry.rings);
-      map.setView([center[0], center[1]], 18);
-      updateURL(sheet, plan, parcelNbr, distCode);
-
-      return enrich(center[0], center[1]).then(function(extra) {
-        showParcel(feature, extra);
-        btn.disabled = false;
-        btn.textContent = 'Find Parcel';
-      });
-    })
-    .catch(function(err) {
-      showError('DLS query failed: ' + err.message);
-      btn.disabled = false;
-      btn.textContent = 'Find Parcel';
-    });
-}
-
-map.on('click', function(e) {
-  if (map.getZoom() < 16) {
-    if (!isMobile() && !sidebar.classList.contains('hidden')) closeSidebar();
-    return;
-  }
-  showError('');
-  findParcelByCoords(e.latlng.lat, e.latlng.lng)
-    .then(function(data) {
-      var feature = (data.features || [])[0];
-      if (!feature) {
-        if (!isMobile() && !sidebar.classList.contains('hidden')) closeSidebar();
-        return;
-      }
-
-      var attrs = feature.attributes;
-      document.getElementById('sheet').value = attrs.SHEET || '';
-      document.getElementById('plan').value = attrs.PLAN_NBR || '';
-      document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
-      document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
-
-      var center = centroid(feature.geometry.rings);
-      updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
-
-      return enrich(center[0], center[1]).then(function(extra) {
-        showParcel(feature, extra);
-      });
-    })
-    .catch(function(err) {
-      showError('DLS query failed: ' + err.message);
-    });
-});
-
-function loadFromURL() {
-  var params = new URLSearchParams(window.location.search);
-  var sheet = params.get('sheet');
-  var plan = params.get('plan');
-  var parcelNbr = params.get('parcel');
-  var distCode = params.get('district');
-  var lat = parseFloat(params.get('lat'));
-  var lng = parseFloat(params.get('lng'));
-  var z = parseInt(params.get('z'), 10);
-
-  if (lat && lng && z) {
-    map.setView([lat, lng], z);
-  }
-
-  if (sheet && plan && parcelNbr) {
-    document.getElementById('sheet').value = sheet;
-    document.getElementById('plan').value = plan;
-    document.getElementById('parcel').value = parcelNbr;
-    if (distCode) document.getElementById('district').value = distCode;
-    doSearch();
-  }
-}
-
+// --- Search form ---
 document.querySelectorAll('#sidebar input').forEach(function(el) {
   el.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
   });
 });
 
+// --- Auth button wiring ---
 document.getElementById('authBtn').addEventListener('click', function(e) {
   e.stopPropagation();
   handleAuthClick();
@@ -924,6 +172,7 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// --- Init ---
 restoreSession();
 if (authUser) loadLists();
 initGoogleSignIn();
@@ -937,3 +186,12 @@ map.on('moveend', function() {
 });
 
 loadFromURL();
+
+// Check for shared list in URL
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var shareToken = params.get('share');
+  if (shareToken) {
+    loadSharedList(shareToken);
+  }
+})();

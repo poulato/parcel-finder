@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Geoktimonas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=5" />
+  <link rel="stylesheet" href="./assets/styles.css?v=7" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -29,7 +29,7 @@
     <div class="sidebar-header">
       <nav class="sidebar-tabs">
         <button class="sidebar-tab active" data-tab="search">Search</button>
-        <button class="sidebar-tab" data-tab="list">List</button>
+        <button class="sidebar-tab" data-tab="list">Saved</button>
       </nav>
       <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button>
     </div>
@@ -75,6 +75,7 @@
         <div id="googleSignInList"></div>
       </div>
       <div id="parcelListWrap" style="display:none;">
+        <button id="newListBtnTop" class="new-list-btn-top">+ New List</button>
         <div id="listsContainer"></div>
         <div id="listsEmpty" class="parcel-list-empty">No lists yet. Create one to start saving parcels.</div>
       </div>
@@ -97,9 +98,41 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         Back to lists
       </button>
-      <h3 id="listParcelsTitle"></h3>
+      <div class="list-detail-header">
+        <h3 id="listParcelsTitle" class="list-title-static"></h3>
+        <input id="listParcelsRename" class="list-title-input hidden" type="text" maxlength="60" />
+        <div class="list-detail-menu">
+          <button id="listDetailMenuBtn" class="lists-menu-btn" title="Options">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+          <div id="listDetailDropdown" class="lists-menu-dropdown hidden">
+            <button id="renameListBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Rename
+            </button>
+            <button id="shareListBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Share
+            </button>
+            <button id="deleteListBtn" class="menu-danger">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
       <div id="listParcelsEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
       <div id="listParcels"></div>
+    </div>
+
+    <div id="viewSharedList" class="sidebar-view">
+      <div class="shared-list-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        <span class="shared-badge">Shared list</span>
+      </div>
+      <h3 id="sharedListTitle" style="color:#f1f5f9;margin:0 0 12px;"></h3>
+      <div id="sharedListParcels"></div>
+      <div id="sharedListEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
     </div>
 
     <div id="viewDetails" class="sidebar-view">
@@ -128,9 +161,9 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span>Search</span>
     </button>
-    <button class="rail-btn" data-tab="list" title="List">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-      <span>List</span>
+    <button class="rail-btn" data-tab="list" title="Saved">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      <span>Saved</span>
     </button>
   </nav>
 
@@ -173,8 +206,8 @@
       <span>Search</span>
     </button>
     <button class="bottom-tab" data-tab="list">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-      <span>List</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      <span>Saved</span>
     </button>
   </nav>
 
@@ -189,7 +222,40 @@
     </div>
   </div>
 
+  <div id="shareModal" class="modal-backdrop hidden">
+    <div class="modal-card share-modal-card">
+      <div class="share-modal-header">
+        <h3>Share list</h3>
+        <button id="shareModalClose" class="share-modal-x">&times;</button>
+      </div>
+      <div class="share-toggle-row">
+        <div class="share-toggle-label">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <div>
+            <div class="share-toggle-title">Public link</div>
+            <div class="share-toggle-desc">Anyone with the link can view this list</div>
+          </div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="sharePublicToggle" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div id="shareLinkSection" class="share-link-section hidden">
+        <div class="share-link-row">
+          <input id="shareLinkInput" type="text" readonly />
+          <button id="shareCopyBtn" class="share-copy-btn">Copy</button>
+        </div>
+        <div id="shareCopied" class="share-copied hidden">Link copied!</div>
+      </div>
+    </div>
+  </div>
+
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/app.js?v=5" defer></script>
+  <script src="./assets/auth.js?v=7" defer></script>
+  <script src="./assets/map.js?v=7" defer></script>
+  <script src="./assets/lists.js?v=7" defer></script>
+  <script src="./assets/save.js?v=7" defer></script>
+  <script src="./assets/app.js?v=7" defer></script>
 </body>
 </html>

@@ -2,11 +2,16 @@ CREATE TABLE IF NOT EXISTS lists (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'private',
+  share_token TEXT UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_lists_user
 ON lists(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_lists_share_token
+ON lists(share_token);
 
 CREATE TABLE IF NOT EXISTS saved_parcels (
   id TEXT PRIMARY KEY,
