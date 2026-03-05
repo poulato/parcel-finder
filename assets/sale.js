@@ -419,7 +419,7 @@ function showSaleForm(existingListing) {
       '</div>' +
       '<div class="field">' +
         '<label>Parcel Certificate (optional)</label>' +
-        '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">Upload a valid certificate to get a <span style="color:#6ee7b7;font-weight:600;">✓ Verified</span> badge on your listing</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">If you add a valid parcel certificate, your listing will be marked as <span style="color:#6ee7b7;font-weight:600;">✓ Verified</span>, increasing trust and visibility for buyers.</div>' +
         '<div class="upload-area" id="certUploadArea">' +
           (listing.certificate_key
             ? '<div class="upload-preview"><img src="' + API_BASE.replace('/api', '') + '/api/images/' + encodeURIComponent(listing.certificate_key) + '" /><span class="listing-verified"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Verified</span></div>'
