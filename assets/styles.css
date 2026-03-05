@@ -1161,7 +1161,7 @@ body {
   display: block;
   width: 100%;
   padding: 12px;
-  background: #16a34a;
+  background: #0ea5a0;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -1171,7 +1171,7 @@ body {
   margin-bottom: 12px;
   transition: background 0.15s;
 }
-.sale-add-listing-btn:hover { background: #15803d; }
+.sale-add-listing-btn:hover { background: #0d9488; }
 #saleResults {
   flex: 1;
   overflow-y: auto;
@@ -1659,21 +1659,21 @@ body {
 
 /* Sale button listed state */
 #detailsActions #detailsSaleBtn {
-  border-color: #16a34a;
-  color: #16a34a;
+  border-color: #0ea5a0;
+  color: #0ea5a0;
 }
 #detailsActions #detailsSaleBtn:hover {
-  background: #16a34a;
+  background: #0ea5a0;
   color: #fff;
-  border-color: #16a34a;
+  border-color: #0ea5a0;
 }
 #detailsActions #detailsSaleBtn.is-listed {
-  background: #16a34a;
-  border-color: #16a34a;
+  background: #0ea5a0;
+  border-color: #0ea5a0;
   color: #fff;
 }
 #detailsSaleBtn.is-listed + .action-label {
-  color: #16a34a;
+  color: #0ea5a0;
 }
 
 /* Lightbox */
