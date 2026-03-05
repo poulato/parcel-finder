@@ -1658,16 +1658,16 @@ body {
 }
 
 /* Sale button listed state */
-#detailsSaleBtn {
+#detailsActions #detailsSaleBtn {
   border-color: #16a34a;
   color: #16a34a;
 }
-#detailsSaleBtn:hover {
+#detailsActions #detailsSaleBtn:hover {
   background: #16a34a;
   color: #fff;
   border-color: #16a34a;
 }
-#detailsSaleBtn.is-listed {
+#detailsActions #detailsSaleBtn.is-listed {
   background: #16a34a;
   border-color: #16a34a;
   color: #fff;
