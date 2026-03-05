@@ -1298,14 +1298,42 @@ body {
     width: 100%;
     height: 100%;
     border-radius: 0;
-    padding: 16px;
+    padding: 0;
     display: flex;
     flex-direction: column;
+  }
+  .sale-modal-card .save-overlay-header {
+    padding: 16px 16px 0;
+    flex-shrink: 0;
   }
   .sale-modal-card #saleOverlayContent {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding: 0 16px;
+  }
+  .sale-modal-card .sale-form {
+    padding-bottom: 0;
+  }
+  .sale-modal-card .sale-submit-btn,
+  .sale-modal-card .sale-remove-btn {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    border-radius: 0;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .sale-modal-card .sale-submit-btn {
+    padding: 16px;
+    font-size: 16px;
+  }
+  .sale-modal-card .sale-remove-btn {
+    padding: 14px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
   }
   #saleModal.modal-backdrop {
     align-items: stretch;
