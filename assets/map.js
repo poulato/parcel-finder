@@ -18,6 +18,7 @@ var satellite = L.tileLayer(
 var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
 var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }, null, { position: 'bottomleft' }).addTo(map);
 var parcelLayer = null;
+var listParcelsGroup = L.layerGroup().addTo(map);
 
 function showError(msg) {
   var el = document.getElementById('errorMsg');
@@ -108,6 +109,7 @@ function buildParcelHTML(attrs, extra) {
 
 function showParcel(feature, extra) {
   if (parcelLayer) { map.removeLayer(parcelLayer); }
+  clearListParcels();
 
   var attrs = feature.attributes;
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
@@ -176,6 +178,7 @@ detailsShareBtn.addEventListener('click', function() {
 
 function doClear() {
   if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
+  clearListParcels();
   currentParcel = null;
   var searchBarEl = document.getElementById('searchBar');
   var searchBarTextEl = document.getElementById('searchBarText');
@@ -255,6 +258,58 @@ function navigateToParcel(sheet, planNbr, parcelNbr, distCode) {
   document.getElementById('parcel').value = parcelNbr;
   document.getElementById('district').value = distCode || '';
   doSearch();
+}
+
+function clearListParcels() {
+  listParcelsGroup.clearLayers();
+}
+
+function showAllListParcels(parcels) {
+  clearListParcels();
+  if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
+  currentParcel = null;
+
+  var btn = document.getElementById('showAllParcelsBtn');
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+
+  var queries = parcels.map(function(p) {
+    return findParcel(p.sheet, p.plan_nbr, p.parcel_nbr, p.dist_code);
+  });
+
+  Promise.all(queries).then(function(results) {
+    var bounds = L.latLngBounds([]);
+    results.forEach(function(data) {
+      var feature = (data.features || [])[0];
+      if (!feature) return;
+      var coords = feature.geometry.rings[0].map(function(p) { return [p[1], p[0]]; });
+      var poly = L.polygon(coords, {
+        color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
+      });
+      listParcelsGroup.addLayer(poly);
+      bounds.extend(poly.getBounds());
+    });
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+    if (currentListId) {
+      history.replaceState(null, '', '?list=' + encodeURIComponent(currentListId));
+      var list = userLists.find(function(l) { return l.id === currentListId; });
+      var searchBarEl = document.getElementById('searchBar');
+      var searchBarTextEl = document.getElementById('searchBarText');
+      if (list && searchBarEl && searchBarTextEl) {
+        searchBarTextEl.textContent = list.name;
+        searchBarEl.classList.add('has-result');
+      }
+    }
+  }).catch(function(err) {
+    console.error('Show all failed:', err);
+  }).then(function() {
+    btn.disabled = false;
+    btn.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg> ' +
+      'Show All on Map';
+  });
 }
 
 map.on('click', function(e) {

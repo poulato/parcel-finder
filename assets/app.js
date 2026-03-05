@@ -175,7 +175,28 @@ document.addEventListener('click', function(e) {
 
 // --- Init ---
 restoreSession();
-if (authUser) loadLists();
+if (authUser) {
+  loadLists().then(function() {
+    var params = new URLSearchParams(window.location.search);
+    var listParam = params.get('list');
+    if (listParam) {
+      openListParcels(listParam).then(function() {
+        if (currentListParcels.length) showAllListParcels(currentListParcels);
+      });
+      switchTab('listParcels');
+      if (isMobile()) {
+        document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+        var savedBtn = document.querySelector('.bottom-tab[data-tab="list"]');
+        if (savedBtn) savedBtn.classList.add('active');
+      } else {
+        document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+        var savedRail = document.querySelector('.rail-btn[data-tab="list"]');
+        if (savedRail) savedRail.classList.add('active');
+      }
+      openSidebar();
+    }
+  });
+}
 initGoogleSignIn();
 
 map.on('moveend', function() {

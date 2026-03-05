@@ -1,5 +1,6 @@
 var userLists = [];
 var currentListId = null;
+var currentListParcels = [];
 
 function renderLists() {
   var container = document.getElementById('listsContainer');
@@ -128,6 +129,8 @@ async function openListParcels(listId) {
   document.getElementById('listDetailDropdown').classList.add('hidden');
   document.getElementById('listParcels').innerHTML = '';
   document.getElementById('listParcelsEmpty').style.display = 'none';
+  document.getElementById('showAllParcelsBtn').style.display = 'none';
+  currentListParcels = [];
   switchTab('listParcels');
 
   try {
@@ -138,6 +141,8 @@ async function openListParcels(listId) {
       document.getElementById('listParcelsEmpty').style.display = 'block';
       return;
     }
+    currentListParcels = parcels;
+    document.getElementById('showAllParcelsBtn').style.display = '';
     document.getElementById('listParcels').innerHTML = parcels.map(function(item) {
       var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
       var area = item.municipality || item.district || '\u2014';
@@ -187,7 +192,15 @@ document.getElementById('listParcels').addEventListener('click', async function(
 
 document.getElementById('backToLists').addEventListener('click', function() {
   currentListId = null;
+  currentListParcels = [];
+  clearListParcels();
+  history.replaceState(null, '', window.location.pathname);
   switchTab('list');
+});
+
+document.getElementById('showAllParcelsBtn').addEventListener('click', function() {
+  if (!currentListParcels.length) return;
+  showAllListParcels(currentListParcels);
 });
 
 // --- List detail 3-dot menu ---

@@ -272,6 +272,26 @@ body {
 .error { color: #f87171; font-size: 13px; display: none; }
 .hint { color: #64748b; font-size: 12px; }
 #listHint { display: none; color: #67e8f9; }
+.show-all-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.show-all-btn:hover { color: #4a90d9; border-color: #4a90d9; }
+.show-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.show-all-btn svg { flex-shrink: 0; }
 .parcel-list-empty {
   color: #64748b;
   font-size: 12px;
