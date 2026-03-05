@@ -766,7 +766,7 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
                 dist_code, district, municipality, planning_zone, title, price,
-                description, contact, certificate_key, photo_keys, status, created_at
+                description, contact, certificate_key, photo_keys, status, views, created_at
          FROM sale_listings WHERE status = ?
          ORDER BY datetime(created_at) ASC LIMIT 200`
       ).bind(statusFilter).all();
