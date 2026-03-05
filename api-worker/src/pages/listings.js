@@ -24,7 +24,7 @@ ${thumb}
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>Land for Sale in ${esc(filterLabel)} | Geoktimonas</title>
 <meta name="description" content="Browse ${listings.length} land parcels for sale in ${esc(filterLabel)}. Find prices, locations, photos, and verified certificates on Geoktimonas."/>
 <link rel="canonical" href="${apiOrigin}/listings${district ? '?district=' + district : ''}"/>

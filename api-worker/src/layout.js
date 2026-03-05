@@ -95,7 +95,7 @@ export function renderStaticPageHead(title, description, canonicalUrl) {
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>${esc(title)} | Geoktimonas</title>
 <meta name="description" content="${esc(description)}"/>
 <link rel="canonical" href="${canonicalUrl}"/>
