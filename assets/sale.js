@@ -268,7 +268,7 @@ async function checkParcelListing() {
     '&parcel_nbr=' + encodeURIComponent(currentParcel.parcel_nbr);
   try {
     var headers = {};
-    var token = localStorage.getItem('id_token');
+    var token = localStorage.getItem('geo_auth_token');
     if (token) headers['Authorization'] = 'Bearer ' + token;
     var res = await fetch(API_BASE + '/listings/check?' + qs, { headers: headers });
     if (!res.ok) return null;

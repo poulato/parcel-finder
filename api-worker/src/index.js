@@ -2,12 +2,23 @@ const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 let cachedCerts = null;
 let certsExpiry = 0;
 
-function json(data, status = 200) {
+const ALLOWED_ORIGINS = [
+  "https://geoktimonas.com",
+  "http://localhost:3001",
+  "http://localhost:8788",
+];
+
+function getCorsOrigin(request) {
+  const origin = request?.headers?.get("Origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
+function json(data, status = 200, request) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": getCorsOrigin(request),
       "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
@@ -85,8 +96,6 @@ function generateToken() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 }
 
-const ADMIN_EMAIL = "pavlibeis@gmail.com";
-
 function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -95,8 +104,9 @@ function getSiteUrl(url, env) {
   return url.origin;
 }
 
-function isAdmin(user) {
-  return user && user.email && user.email.toLowerCase() === ADMIN_EMAIL;
+function isAdmin(user, env) {
+  const adminEmail = env.ADMIN_EMAIL || "hello@truemythgames.com";
+  return user && user.email && user.email.toLowerCase() === adminEmail.toLowerCase();
 }
 
 async function getListAccess(env, listId, user) {
@@ -119,7 +129,14 @@ export default {
     const path = url.pathname;
 
     if (request.method === "OPTIONS") {
-      return json({ ok: true });
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": getCorsOrigin(request),
+          "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
     }
 
     if (path === "/api/health" && request.method === "GET") {
@@ -363,7 +380,8 @@ export default {
         if (String(err).includes("UNIQUE")) {
           return json({ error: "Parcel already exists in this list" }, 409);
         }
-        return json({ error: "Failed to save parcel", details: String(err) }, 500);
+        console.error("Failed to save parcel:", err);
+        return json({ error: "Failed to save parcel" }, 500);
       }
 
       const { results } = await env.DB.prepare(
@@ -490,7 +508,7 @@ export default {
       const headers = new Headers();
       headers.set("Content-Type", obj.httpMetadata?.contentType || "image/jpeg");
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
-      headers.set("Access-Control-Allow-Origin", "*");
+      headers.set("Access-Control-Allow-Origin", getCorsOrigin(request));
       return new Response(obj.body, { headers });
     }
 
@@ -570,7 +588,7 @@ export default {
       }
 
       const id = crypto.randomUUID();
-      const autoApprove = isAdmin(user);
+      const autoApprove = isAdmin(user, env);
       await env.DB.prepare(
         `INSERT INTO sale_listings (
           id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
@@ -618,7 +636,7 @@ export default {
       if (body.contact !== undefined) { updates.push("contact = ?"); binds.push(body.contact); }
       if (body.certificate_key !== undefined) { updates.push("certificate_key = ?"); binds.push(body.certificate_key ?? null); }
       if (body.photo_keys !== undefined) { updates.push("photo_keys = ?"); binds.push(body.photo_keys ? JSON.stringify(body.photo_keys) : null); }
-      if (!isAdmin(user)) {
+      if (!isAdmin(user, env)) {
         updates.push("status = ?"); binds.push("pending");
       }
 
@@ -657,7 +675,7 @@ export default {
 
     if (path === "/api/admin/listings" && request.method === "GET") {
       const user = await getAuthUser(request, env);
-      if (!user || !isAdmin(user)) return json({ error: "Not authorized" }, 403);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
 
       const statusFilter = url.searchParams.get("status") || "pending";
       const { results } = await env.DB.prepare(
@@ -672,7 +690,7 @@ export default {
 
     if (path.match(/^\/api\/admin\/listings\/[^/]+$/) && request.method === "PATCH") {
       const user = await getAuthUser(request, env);
-      if (!user || !isAdmin(user)) return json({ error: "Not authorized" }, 403);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
 
       const id = decodeURIComponent(path.split("/")[4]);
       const body = await request.json().catch(() => null);
