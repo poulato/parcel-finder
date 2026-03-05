@@ -255,7 +255,7 @@ loadFromURL();
 (function() {
   var tabParam = new URLSearchParams(window.location.search).get('tab');
   if (tabParam && ['search', 'list', 'sale'].includes(tabParam)) {
-    switchTab(tabParam === 'search' ? 'details' : tabParam);
+    switchTab(tabParam === 'search' ? (currentParcel ? 'details' : 'search') : tabParam);
     if (isMobile()) {
       document.querySelectorAll('.bottom-tab').forEach(function(b) {
         b.classList.toggle('active', b.getAttribute('data-tab') === (tabParam === 'details' ? 'search' : tabParam));
