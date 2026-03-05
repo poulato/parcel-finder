@@ -562,7 +562,7 @@ function buildListingDetailHTML(listing) {
         (listing.user_picture ? '<img class="listing-poster-avatar" src="' + listing.user_picture + '" />' : '') +
         '<span>' + posterName + '</span>' +
       '</div>' +
-      '<div class="listing-detail-contact-inline">' +
+      '<div class="listing-detail-contact-inline" style="cursor:pointer" onclick="copyPhone(\'' + escapeHTML((listing.contact || '').replace(/\s/g, '')) + '\')" title="Click to copy">' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg> ' +
         escapeHTML(listing.contact) +
       '</div>' +
@@ -571,8 +571,19 @@ function buildListingDetailHTML(listing) {
   '</div>';
 }
 
+function copyPhone(num) {
+  navigator.clipboard.writeText(num).then(function() {
+    var el = document.querySelector('.listing-detail-contact-inline');
+    if (el) {
+      var orig = el.innerHTML;
+      el.textContent = 'Copied!';
+      setTimeout(function() { el.innerHTML = orig; }, 1500);
+    }
+  });
+}
+
 function copyListingLink(listingId) {
-  var listingUrl = API_BASE.replace('/api', '') + '/listing/' + listingId;
+  var listingUrl = window.location.origin + '/listing/' + listingId;
   navigator.clipboard.writeText(listingUrl).then(function() {
     var btn = document.querySelector('.listing-share-btn');
     if (btn) { btn.textContent = 'Link copied!'; setTimeout(function() { btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Share Listing'; }, 2000); }

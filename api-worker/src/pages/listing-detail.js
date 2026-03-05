@@ -72,7 +72,8 @@ ${GTM_HEAD}
 .desc{font-size:15px;line-height:1.6;color:#cbd5e1;margin-bottom:20px}
 .poster{display:flex;align-items:center;gap:10px;font-size:14px;color:#94a3b8;margin-bottom:8px}
 .poster img{width:32px;height:32px;border-radius:50%}
-.contact{font-size:14px;color:#94a3b8;margin-bottom:24px}
+.contact{font-size:14px;color:#94a3b8;margin-bottom:24px;cursor:pointer}
+.contact:hover{color:#cbd5e1}
 .cta{display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;transition:background .15s}
 .cta:hover{background:#1d4ed8}
 .footer{margin-top:40px;padding-top:20px;border-top:1px solid #1e293b;font-size:12px;color:#475569;text-align:center}
@@ -101,7 +102,7 @@ ${listing.description ? `<div class="desc">${esc(listing.description)}</div>` : 
 ${listing.user_picture ? `<img src="${esc(listing.user_picture)}" alt=""/>` : ''}
 <span>${esc(listing.user_name || 'Anonymous')}</span>
 </div>
-<div class="contact">📞 ${esc(listing.contact)}</div>
+<div class="contact" onclick="navigator.clipboard.writeText('${esc((listing.contact || '').replace(/\s/g, ''))}');this.textContent='Copied!';setTimeout(()=>{this.innerHTML='📞 ${esc(listing.contact)}'}, 1500)" title="Click to copy">📞 ${esc(listing.contact)}</div>
 <a class="cta" href="${appUrl}">View on Map →</a>
 <div class="footer">
 <p>Land listing on <a href="${siteUrl}">Geoktimonas</a> · <a href="${apiOrigin}/listings">Browse all listings</a></p>
