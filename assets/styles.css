@@ -1658,13 +1658,22 @@ body {
 }
 
 /* Sale button listed state */
+#detailsSaleBtn {
+  border-color: #16a34a;
+  color: #16a34a;
+}
+#detailsSaleBtn:hover {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
+}
 #detailsSaleBtn.is-listed {
-  background: #f59e0b;
-  border-color: #f59e0b;
+  background: #16a34a;
+  border-color: #16a34a;
   color: #fff;
 }
 #detailsSaleBtn.is-listed + .action-label {
-  color: #f59e0b;
+  color: #16a34a;
 }
 
 /* Lightbox */
