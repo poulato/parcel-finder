@@ -1,6 +1,7 @@
 var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
 var currentParcel = null;
 var _skipTabSwitch = false;
+var _searchGen = 0;
 
 var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4], 9);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -19,6 +20,7 @@ var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: 
 var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }, null, { position: 'bottomleft' }).addTo(map);
 var parcelLayer = null;
 var listParcelsGroup = L.layerGroup().addTo(map);
+var saleMarkersGroup = L.layerGroup().addTo(map);
 
 function showError(msg) {
   var el = document.getElementById('errorMsg');
@@ -92,6 +94,21 @@ function centroid(rings) {
   return [latSum / n, lngSum / n];
 }
 
+function pickFeatureByMunicipality(features, municipality) {
+  if (features.length <= 1 || !municipality) return Promise.resolve(features[0]);
+  var checks = features.map(function(f) {
+    var c = centroid(f.geometry.rings);
+    return spatialLookup(16, 'VIL_NM_E', c[0], c[1]).then(function(data) {
+      var muni = (data.features && data.features[0]) ? data.features[0].attributes.VIL_NM_E : '';
+      return { feature: f, municipality: muni };
+    });
+  });
+  return Promise.all(checks).then(function(results) {
+    var match = results.find(function(r) { return r.municipality === municipality; });
+    return match ? match.feature : features[0];
+  });
+}
+
 var detailsContentEl = document.getElementById('detailsContent');
 var detailsActionsEl = document.getElementById('detailsActions');
 var detailsAddBtn = document.getElementById('detailsAddBtn');
@@ -110,6 +127,7 @@ function buildParcelHTML(attrs, extra) {
 function showParcel(feature, extra) {
   if (parcelLayer) { map.removeLayer(parcelLayer); }
   clearListParcels();
+  if (typeof saleMarkersGroup !== 'undefined') saleMarkersGroup.clearLayers();
 
   var attrs = feature.attributes;
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
@@ -138,9 +156,21 @@ function showParcel(feature, extra) {
   parcelSavedLists = [];
   updateSaveButton();
   checkParcelSaved();
+  if (typeof checkParcelListing === 'function') {
+    checkParcelListing().then(function(listing) {
+      if (typeof updateSaleButton === 'function') updateSaleButton(listing || null);
+    });
+  }
 
   var skipTab = _skipTabSwitch;
   _skipTabSwitch = false;
+
+  var searchBarEl = document.getElementById('searchBar');
+  var searchBarTextEl = document.getElementById('searchBarText');
+  if (searchBarEl && searchBarTextEl) {
+    searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' \u2022 ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
+    searchBarEl.classList.add('has-result');
+  }
 
   if (!skipTab) {
     switchTab('details');
@@ -150,13 +180,6 @@ function showParcel(feature, extra) {
       document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
     }
     if (sidebar.classList.contains('hidden')) openSidebar();
-  }
-
-  var searchBarEl = document.getElementById('searchBar');
-  var searchBarTextEl = document.getElementById('searchBarText');
-  if (searchBarEl && searchBarTextEl) {
-    searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' \u2022 ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
-    searchBarEl.classList.add('has-result');
   }
 }
 
@@ -209,6 +232,8 @@ function updateURL(sheet, plan, parcelNbr, distCode) {
 }
 
 function doSearch() {
+  _searchGen++;
+  var gen = _searchGen;
   var sheet = document.getElementById('sheet').value.trim();
   var plan = document.getElementById('plan').value.trim();
   var parcelNbr = document.getElementById('parcel').value.trim();
@@ -227,6 +252,7 @@ function doSearch() {
 
   findParcel(sheet, plan, parcelNbr, distCode)
     .then(function(data) {
+      if (gen !== _searchGen) return;
       var features = data.features || [];
       if (!features.length) {
         showError('No parcel found. Check the values.');
@@ -240,12 +266,14 @@ function doSearch() {
       updateURL(sheet, plan, parcelNbr, distCode);
 
       return enrich(center[0], center[1]).then(function(extra) {
+        if (gen !== _searchGen) return;
         showParcel(feature, extra);
         btn.disabled = false;
         btn.textContent = 'Find Parcel';
       });
     })
     .catch(function(err) {
+      if (gen !== _searchGen) return;
       showError('DLS query failed: ' + err.message);
       btn.disabled = false;
       btn.textContent = 'Find Parcel';
@@ -265,6 +293,7 @@ function clearListParcels() {
 }
 
 function showAllListParcels(parcels) {
+  _searchGen++;
   clearListParcels();
   if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
   currentParcel = null;

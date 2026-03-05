@@ -3,9 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Geoktimonas</title>
+  <title>Geoktimonas – Cyprus Land Parcel Finder & Marketplace</title>
+  <meta name="description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale, save parcels to lists, and share with others. Free online tool for Cyprus real estate." />
+  <meta name="keywords" content="Cyprus land, parcels, DLS, cadastral map, land for sale, real estate Cyprus, Limassol, Nicosia, Paphos, Larnaca, Famagusta" />
+  <link rel="canonical" href="https://geoktimonas.com/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Geoktimonas – Cyprus Land Parcel Finder & Marketplace" />
+  <meta property="og:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale, save parcels to lists, and share." />
+  <meta property="og:url" content="https://geoktimonas.com/" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
+  <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=10" />
+  <link rel="stylesheet" href="./assets/styles.css?v=51" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -30,6 +40,7 @@
       <nav class="sidebar-tabs">
         <button class="sidebar-tab active" data-tab="search">Search</button>
         <button class="sidebar-tab" data-tab="list">Saved</button>
+        <button class="sidebar-tab" data-tab="sale">Sale</button>
       </nav>
       <button class="close-btn" onclick="closeSidebar()" title="Hide panel">&#10005;</button>
     </div>
@@ -141,10 +152,55 @@
       <div id="sharedListEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
     </div>
 
+    <div id="viewSale" class="sidebar-view">
+      <div class="sale-filters">
+        <div class="field">
+          <label for="saleDistrict">District</label>
+          <select id="saleDistrict">
+            <option value="">All</option>
+            <option value="1">Nicosia (Lefkosia)</option>
+            <option value="5">Limassol (Lemesos)</option>
+            <option value="4">Larnaca (Larnaka)</option>
+            <option value="6">Paphos (Pafos)</option>
+            <option value="2">Famagusta (Ammochostos)</option>
+            <option value="3">Kyrenia (Keryneia)</option>
+          </select>
+        </div>
+        <div class="sale-price-row">
+          <div class="field" style="flex:1;">
+            <label for="saleMinPrice">Min &euro;</label>
+            <input type="number" id="saleMinPrice" placeholder="0" />
+          </div>
+          <div class="field" style="flex:1;">
+            <label for="saleMaxPrice">Max &euro;</label>
+            <input type="number" id="saleMaxPrice" placeholder="Any" />
+          </div>
+        </div>
+        <button id="saleFilterBtn" class="sale-filter-btn">Search Listings</button>
+      </div>
+      <div id="saleResults"></div>
+      <div id="saleEmpty" class="parcel-list-empty" style="display:none;">No listings found.</div>
+    </div>
+
+    <div id="viewSaleDetail" class="sidebar-view">
+      <button id="backToSaleList" class="back-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to Listings
+      </button>
+      <div class="sale-detail-heading">Listing Details</div>
+      <div id="saleDetailContent"></div>
+    </div>
+
     <div id="viewDetails" class="sidebar-view">
       <div id="detailsContent"></div>
       <hr class="details-divider">
       <div id="detailsActions" style="display:none;">
+        <div class="action-item">
+          <button id="detailsSaleBtn" title="For Sale">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </button>
+          <span class="action-label">Sale</span>
+        </div>
         <div class="action-item">
           <button id="detailsAddBtn" title="Add to List">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -170,6 +226,14 @@
     <button class="rail-btn" data-tab="list" title="Saved">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       <span>Saved</span>
+    </button>
+    <button class="rail-btn" data-tab="sale" title="Sale">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>Sale</span>
+    </button>
+    <button class="rail-btn" id="railListBtn" title="Listings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <span>List</span>
     </button>
   </nav>
 
@@ -215,7 +279,25 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       <span>Saved</span>
     </button>
+    <button class="bottom-tab" data-tab="sale">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>Sale</span>
+    </button>
+    <button class="bottom-tab" id="bottomListBtn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <span>List</span>
+    </button>
   </nav>
+
+  <div id="saleModal" class="modal-backdrop hidden">
+    <div class="modal-card sale-modal-card">
+      <div class="save-overlay-header">
+        <h3 class="save-panel-title" id="saleOverlayTitle">List for Sale</h3>
+        <button id="saleOverlayClose" title="Close">&times;</button>
+      </div>
+      <div id="saleOverlayContent"></div>
+    </div>
+  </div>
 
   <div id="newListModal" class="modal-backdrop hidden">
     <div class="modal-card">
@@ -265,11 +347,35 @@
     </div>
   </div>
 
+  <div id="imageLightbox" class="lightbox-backdrop hidden" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="event.stopPropagation(); closeLightbox();">&times;</button>
+    <button class="lightbox-prev" onclick="lightboxPrev(event)">&#8249;</button>
+    <img class="lightbox-img" src="" alt="" onclick="event.stopPropagation();" />
+    <button class="lightbox-next" onclick="lightboxNext(event)">&#8250;</button>
+    <div class="lightbox-counter"></div>
+  </div>
+
+  <noscript>
+    <div style="padding:40px;max-width:700px;margin:0 auto;font-family:sans-serif;color:#333;">
+      <h1>Geoktimonas – Cyprus Land Parcel Finder & Marketplace</h1>
+      <p>Geoktimonas lets you search and explore Cyprus land parcels using the official DLS cadastral map. Find parcel details including sheet, plan number, district, municipality, and planning zone.</p>
+      <h2>Features</h2>
+      <ul>
+        <li>Search parcels by Sheet, Plan, and Parcel number across all Cyprus districts: Nicosia, Limassol, Larnaca, Paphos, and Famagusta.</li>
+        <li>View parcel boundaries on an interactive map.</li>
+        <li>Save parcels to custom lists and share them with others.</li>
+        <li>Browse land for sale – a marketplace for Cyprus land parcels with prices, photos, and verified certificates.</li>
+      </ul>
+      <p>Please enable JavaScript to use the interactive map application.</p>
+    </div>
+  </noscript>
+
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/auth.js?v=10" defer></script>
-  <script src="./assets/map.js?v=10" defer></script>
-  <script src="./assets/lists.js?v=10" defer></script>
-  <script src="./assets/save.js?v=10" defer></script>
-  <script src="./assets/app.js?v=10" defer></script>
+  <script src="./assets/auth.js?v=11" defer></script>
+  <script src="./assets/map.js?v=51" defer></script>
+  <script src="./assets/lists.js?v=11" defer></script>
+  <script src="./assets/save.js?v=11" defer></script>
+  <script src="./assets/sale.js?v=51" defer></script>
+  <script src="./assets/app.js?v=34" defer></script>
 </body>
 </html>

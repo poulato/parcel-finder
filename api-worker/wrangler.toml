@@ -2,10 +2,18 @@ name = "geoktimonas-api"
 main = "src/index.js"
 compatibility_date = "2026-03-03"
 
+[assets]
+directory = "../"
+
 [vars]
 GOOGLE_CLIENT_ID = "284743039293-0lo05gnap8immcls45hqsniv16djtdap.apps.googleusercontent.com"
+SITE_URL = "https://geoktimonas.com"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "geoktimonas-db"
 database_id = "7dd9cbad-8720-445d-9c10-1d93df9531bc"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "geoktimonas-images"

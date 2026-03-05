@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Geoktimonas Admin</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .admin-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #1e293b; border-bottom: 1px solid #334155; }
+    .admin-header h1 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .admin-header h1 span { font-size: 22px; }
+    .admin-user { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #94a3b8; }
+    .admin-user img { width: 28px; height: 28px; border-radius: 50%; }
+    .admin-user .sign-out { background: none; border: 1px solid #475569; color: #94a3b8; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .admin-user .sign-out:hover { border-color: #64748b; color: #cbd5e1; }
+    .admin-body { max-width: 900px; margin: 0 auto; padding: 24px; }
+    .admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+    .admin-tab { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
+    .admin-tab.active { background: #334155; color: #e2e8f0; border-color: #475569; }
+    .admin-tab:hover:not(.active) { border-color: #475569; color: #cbd5e1; }
+    .admin-tab .count { background: #475569; color: #e2e8f0; padding: 1px 6px; border-radius: 10px; font-size: 11px; margin-left: 6px; }
+    .admin-tab.active .count { background: #6b9eff; color: #0f172a; }
+    .admin-auth { text-align: center; padding: 80px 20px; }
+    .admin-auth h2 { font-size: 20px; margin-bottom: 8px; }
+    .admin-auth p { color: #94a3b8; margin-bottom: 24px; font-size: 14px; }
+    .admin-denied { text-align: center; padding: 80px 20px; color: #f87171; }
+    .admin-denied h2 { margin-bottom: 8px; }
+    .admin-denied p { color: #94a3b8; font-size: 14px; }
+    .admin-empty { text-align: center; padding: 40px 20px; color: #64748b; font-size: 14px; }
+    .listing-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 12px; transition: border-color .15s; }
+    .listing-card:hover { border-color: #475569; }
+    .listing-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .listing-card-info { flex: 1; min-width: 0; }
+    .listing-card-title { font-size: 15px; font-weight: 600; color: #e2e8f0; margin-bottom: 2px; }
+    .listing-card-price { font-size: 14px; color: #6b9eff; font-weight: 600; margin-bottom: 4px; }
+    .listing-card-meta { font-size: 12px; color: #64748b; display: flex; flex-wrap: wrap; gap: 6px; }
+    .listing-card-meta span { display: flex; align-items: center; gap: 3px; }
+    .listing-card-desc { font-size: 13px; color: #94a3b8; margin-top: 8px; line-height: 1.4; }
+    .listing-card-user { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #283040; font-size: 12px; color: #94a3b8; }
+    .listing-card-user img { width: 22px; height: 22px; border-radius: 50%; }
+    .listing-card-photos { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto; }
+    .listing-card-photos img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #334155; }
+    .listing-card-cert { margin-top: 6px; font-size: 11px; color: #10b981; display: flex; align-items: center; gap: 4px; }
+    .listing-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .btn { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; }
+    .btn-approve { background: #166534; color: #bbf7d0; }
+    .btn-approve:hover { background: #15803d; }
+    .btn-reject { background: #450a0a; color: #fca5a5; }
+    .btn-reject:hover { background: #7f1d1d; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .listing-card-date { font-size: 11px; color: #475569; margin-top: 4px; }
+    #googleSignInAdmin { display: inline-block; }
+    .loading { text-align: center; padding: 40px; color: #64748b; }
+  </style>
+</head>
+<body>
+
+  <div class="admin-header">
+    <h1><span>🏡</span> Geoktimonas Admin</h1>
+    <div class="admin-user" id="adminUser" style="display:none;">
+      <img id="adminAvatar" src="" alt="" />
+      <span id="adminName"></span>
+      <button class="sign-out" onclick="adminSignOut()">Sign out</button>
+    </div>
+  </div>
+
+  <div class="admin-body">
+    <div id="authScreen" class="admin-auth">
+      <h2>Admin Panel</h2>
+      <p>Sign in with your Google account to manage listings.</p>
+      <div id="googleSignInAdmin"></div>
+    </div>
+
+    <div id="deniedScreen" class="admin-denied" style="display:none;">
+      <h2>Access Denied</h2>
+      <p>Your account does not have admin privileges.</p>
+    </div>
+
+    <div id="adminPanel" style="display:none;">
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-status="pending" onclick="switchAdminTab('pending')">Pending <span class="count" id="countPending">0</span></button>
+        <button class="admin-tab" data-status="active" onclick="switchAdminTab('active')">Active <span class="count" id="countActive">0</span></button>
+        <button class="admin-tab" data-status="rejected" onclick="switchAdminTab('rejected')">Rejected <span class="count" id="countRejected">0</span></button>
+      </div>
+      <div id="listingsContainer"></div>
+    </div>
+  </div>
+
+<script>
+var GOOGLE_CLIENT_ID = '284743039293-0lo05gnap8immcls45hqsniv16djtdap.apps.googleusercontent.com';
+var API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:8788/api'
+  : 'https://geoktimonas-api.hello-118.workers.dev/api';
+
+var adminToken = null;
+var adminUser = null;
+var currentTab = 'pending';
+
+function adminAuthHeaders() {
+  return adminToken ? { 'Authorization': 'Bearer ' + adminToken } : {};
+}
+
+function escapeHTML(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function formatDate(d) {
+  try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch(e) { return d; }
+}
+
+function onAdminSignIn(response) {
+  adminToken = response.credential;
+  var parts = adminToken.split('.');
+  var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+  adminUser = { id: payload.sub, email: payload.email, name: payload.name, picture: payload.picture };
+  localStorage.setItem('admin_auth_token', adminToken);
+  localStorage.setItem('admin_auth_user', JSON.stringify(adminUser));
+  checkAdminAccess();
+}
+
+function checkAdminAccess() {
+  document.getElementById('authScreen').style.display = 'none';
+  fetch(API_BASE + '/admin/listings?status=pending', { headers: adminAuthHeaders() })
+    .then(function(res) {
+      if (res.status === 403) {
+        document.getElementById('deniedScreen').style.display = '';
+        return;
+      }
+      document.getElementById('adminPanel').style.display = '';
+      document.getElementById('adminUser').style.display = 'flex';
+      document.getElementById('adminAvatar').src = adminUser.picture || '';
+      document.getElementById('adminName').textContent = adminUser.name || adminUser.email;
+      loadAllCounts();
+      loadListings('pending');
+    });
+}
+
+function adminSignOut() {
+  adminToken = null;
+  adminUser = null;
+  localStorage.removeItem('admin_auth_token');
+  localStorage.removeItem('admin_auth_user');
+  document.getElementById('adminPanel').style.display = 'none';
+  document.getElementById('adminUser').style.display = 'none';
+  document.getElementById('deniedScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = '';
+  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+}
+
+function switchAdminTab(status) {
+  currentTab = status;
+  document.querySelectorAll('.admin-tab').forEach(function(t) {
+    t.classList.toggle('active', t.getAttribute('data-status') === status);
+  });
+  loadListings(status);
+}
+
+function loadAllCounts() {
+  ['pending', 'active', 'rejected'].forEach(function(s) {
+    fetch(API_BASE + '/admin/listings?status=' + s, { headers: adminAuthHeaders() })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var el = document.getElementById('count' + s.charAt(0).toUpperCase() + s.slice(1));
+        if (el) el.textContent = data.length || 0;
+      });
+  });
+}
+
+function loadListings(status) {
+  var container = document.getElementById('listingsContainer');
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  fetch(API_BASE + '/admin/listings?status=' + status, { headers: adminAuthHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(listings) {
+      if (!listings.length) {
+        container.innerHTML = '<div class="admin-empty">No ' + status + ' listings.</div>';
+        return;
+      }
+      container.innerHTML = listings.map(function(l) { return renderListingCard(l, status); }).join('');
+    })
+    .catch(function() {
+      container.innerHTML = '<div class="admin-empty">Failed to load listings.</div>';
+    });
+}
+
+function renderListingCard(l, status) {
+  var priceText = l.price ? '€' + Number(l.price).toLocaleString() : 'Negotiable';
+  var loc = l.municipality || l.district || '';
+  var photos = [];
+  try { photos = l.photo_keys ? JSON.parse(l.photo_keys) : []; } catch(e) {}
+  var photosHTML = photos.length
+    ? '<div class="listing-card-photos">' + photos.map(function(k) {
+        return '<img src="' + API_BASE.replace('/api', '') + '/api/images/' + encodeURIComponent(k) + '" alt="" />';
+      }).join('') + '</div>'
+    : '';
+  var certHTML = l.certificate_key
+    ? '<div class="listing-card-cert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Certificate provided</div>'
+    : '';
+
+  var actionsHTML = '';
+  if (status === 'pending') {
+    actionsHTML = '<div class="listing-card-actions">' +
+      '<button class="btn btn-approve" onclick="adminAction(\'' + l.id + '\', \'active\')">Approve</button>' +
+      '<button class="btn btn-reject" onclick="adminAction(\'' + l.id + '\', \'rejected\')">Reject</button>' +
+      '</div>';
+  } else if (status === 'active') {
+    actionsHTML = '<div class="listing-card-actions">' +
+      '<button class="btn btn-reject" onclick="adminAction(\'' + l.id + '\', \'rejected\')">Reject</button>' +
+      '</div>';
+  } else if (status === 'rejected') {
+    actionsHTML = '<div class="listing-card-actions">' +
+      '<button class="btn btn-approve" onclick="adminAction(\'' + l.id + '\', \'active\')">Approve</button>' +
+      '</div>';
+  }
+
+  return '<div class="listing-card" id="card-' + l.id + '">' +
+    '<div class="listing-card-top">' +
+      '<div class="listing-card-info">' +
+        (l.title ? '<div class="listing-card-title">' + escapeHTML(l.title) + '</div>' : '') +
+        '<div class="listing-card-price">' + priceText + '</div>' +
+        '<div class="listing-card-meta">' +
+          (loc ? '<span>' + escapeHTML(loc) + '</span>' : '') +
+          '<span>&bull; Parcel ' + l.parcel_nbr + ' &bull; ' + l.sheet + '/' + l.plan_nbr + '</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    (l.description ? '<div class="listing-card-desc">' + escapeHTML(l.description) + '</div>' : '') +
+    photosHTML +
+    certHTML +
+    '<div class="listing-card-user">' +
+      (l.user_picture ? '<img src="' + l.user_picture + '" alt="" />' : '') +
+      '<span>' + escapeHTML(l.user_name || 'Anonymous') + '</span>' +
+    '</div>' +
+    '<div class="listing-card-date">Submitted ' + formatDate(l.created_at) + '</div>' +
+    actionsHTML +
+  '</div>';
+}
+
+function adminAction(id, newStatus) {
+  var card = document.getElementById('card-' + id);
+  var btns = card ? card.querySelectorAll('.btn') : [];
+  btns.forEach(function(b) { b.disabled = true; });
+
+  fetch(API_BASE + '/admin/listings/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, adminAuthHeaders()),
+    body: JSON.stringify({ status: newStatus })
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('Failed');
+    loadAllCounts();
+    loadListings(currentTab);
+  })
+  .catch(function() {
+    alert('Action failed');
+    btns.forEach(function(b) { b.disabled = false; });
+  });
+}
+
+function restoreAdminSession() {
+  var token = localStorage.getItem('admin_auth_token');
+  var user = localStorage.getItem('admin_auth_user');
+  if (token && user) {
+    try {
+      adminUser = JSON.parse(user);
+      var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload.exp * 1000 > Date.now()) {
+        adminToken = token;
+        checkAdminAccess();
+        return true;
+      }
+    } catch(e) {}
+  }
+  return false;
+}
+
+function initAdminGoogleSignIn() {
+  if (!window.google || !google.accounts) {
+    setTimeout(initAdminGoogleSignIn, 200);
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: onAdminSignIn,
+    auto_select: true
+  });
+  google.accounts.id.renderButton(document.getElementById('googleSignInAdmin'), {
+    type: 'standard', size: 'large', theme: 'filled_black', text: 'signin_with', width: 250
+  });
+  if (!restoreAdminSession()) {
+    google.accounts.id.prompt();
+  }
+}
+
+initAdminGoogleSignIn();
+</script>
+</body>
+</html>

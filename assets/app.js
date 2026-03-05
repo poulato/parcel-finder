@@ -1,17 +1,24 @@
-var API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:8788/api'
-  : 'https://geoktimonas-api.hello-118.workers.dev/api';
+var API_BASE = '/api';
 
 // --- Sidebar & Navigation ---
 
 function switchTab(tabName) {
   closeSavePanel();
+  if (typeof closeSaleOverlay === 'function') closeSaleOverlay();
   document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
   });
   document.querySelectorAll('.sidebar-view').forEach(function(view) {
     view.classList.toggle('active', view.id === 'view' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
   });
+  if (tabName === 'sale' && typeof loadSaleListings === 'function') {
+    loadSaleListings();
+    var sb = document.getElementById('searchBar');
+    var sbt = document.getElementById('searchBarText');
+    if (sb && sbt) { sbt.textContent = 'Search parcels'; sb.classList.remove('has-result'); }
+  } else if (typeof clearSaleMarkers === 'function') {
+    clearSaleMarkers();
+  }
 }
 
 document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
@@ -214,4 +221,30 @@ map.on('moveend', function() {
   );
 });
 
+var listingsUrl = '/listings';
+
+document.getElementById('railListBtn').addEventListener('click', function() {
+  window.open(listingsUrl, '_blank');
+});
+document.getElementById('bottomListBtn').addEventListener('click', function() {
+  window.open(listingsUrl, '_blank');
+});
+
 loadFromURL();
+
+(function() {
+  var tabParam = new URLSearchParams(window.location.search).get('tab');
+  if (tabParam && ['search', 'list', 'sale'].includes(tabParam)) {
+    switchTab(tabParam === 'search' ? 'details' : tabParam);
+    if (isMobile()) {
+      document.querySelectorAll('.bottom-tab').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === (tabParam === 'details' ? 'search' : tabParam));
+      });
+    } else {
+      document.querySelectorAll('.rail-btn').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === (tabParam === 'details' ? 'search' : tabParam));
+      });
+    }
+    openSidebar();
+  }
+})();

@@ -2,8 +2,7 @@
   "name": "parcel-finder",
   "private": true,
   "scripts": {
-    "frontend": "npx serve . -p 3001",
-    "backend": "cd api-worker && npx wrangler dev --port 8788",
+    "dev": "cd api-worker && npx wrangler dev --port 3001",
     "db:init": "cd api-worker && npx wrangler d1 execute geoktimonas-db --local --file=schema.sql"
   }
 }
