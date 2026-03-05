@@ -130,10 +130,10 @@ function buildParcelHTML(attrs, extra) {
     '<div><span class="label">Zone Detail:</span> <span class="value zone-detail">' + extra.planning_zone_desc + '</span></div>';
 }
 
-function showParcel(feature, extra) {
+function showParcel(feature, extra, outlineColor) {
   if (parcelLayer) { map.removeLayer(parcelLayer); }
   clearListParcels();
-  if (typeof saleMarkersGroup !== 'undefined') saleMarkersGroup.clearLayers();
+  if (!outlineColor && typeof saleMarkersGroup !== 'undefined') saleMarkersGroup.clearLayers();
 
   var attrs = feature.attributes;
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
@@ -152,8 +152,9 @@ function showParcel(feature, extra) {
   var rings = feature.geometry.rings;
   var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
 
+  var c = outlineColor || '#ff0000';
   parcelLayer = L.polygon(coords, {
-    color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
+    color: c, weight: 4, fillColor: c, fillOpacity: outlineColor ? 0.2 : 0.3
   }).addTo(map);
 
   var html = buildParcelHTML(attrs, extra);
@@ -172,14 +173,16 @@ function showParcel(feature, extra) {
   var skipTab = _skipTabSwitch;
   _skipTabSwitch = false;
 
-  var searchBarEl = document.getElementById('searchBar');
-  var searchBarTextEl = document.getElementById('searchBarText');
-  if (searchBarEl && searchBarTextEl) {
-    searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' \u2022 ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
-    searchBarEl.classList.add('has-result');
+  if (!outlineColor) {
+    var searchBarEl = document.getElementById('searchBar');
+    var searchBarTextEl = document.getElementById('searchBarText');
+    if (searchBarEl && searchBarTextEl) {
+      searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' \u2022 ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
+      searchBarEl.classList.add('has-result');
+    }
   }
 
-  if (!skipTab) {
+  if (!skipTab && !outlineColor) {
     switchTab('details');
     if (isMobile()) {
       document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
@@ -226,17 +229,20 @@ function doClear() {
 }
 
 function updateURL(sheet, plan, parcelNbr, distCode) {
-  var params = new URLSearchParams();
+  var params = new URLSearchParams(window.location.search);
   params.set('sheet', sheet);
   params.set('plan', plan);
   params.set('parcel', parcelNbr);
   if (distCode) params.set('district', distCode);
+  else params.delete('district');
   var c = map.getCenter();
   params.set('lat', c.lat.toFixed(6));
   params.set('lng', c.lng.toFixed(6));
   params.set('z', map.getZoom());
   history.replaceState(null, '', '?' + params.toString());
 }
+
+var _searchMunicipality = null;
 
 function doSearch() {
   _searchGen++;
@@ -245,6 +251,8 @@ function doSearch() {
   var plan = document.getElementById('plan').value.trim();
   var parcelNbr = document.getElementById('parcel').value.trim();
   var distCode = document.getElementById('district').value;
+  var municipality = _searchMunicipality;
+  _searchMunicipality = null;
 
   showError('');
 
@@ -267,17 +275,20 @@ function doSearch() {
         btn.textContent = 'Find Parcel';
         return;
       }
-      var feature = features[0];
-      var center = centroid(feature.geometry.rings);
-      map.setView([center[0], center[1]], 18);
-      updateURL(sheet, plan, parcelNbr, distCode);
+      return pickFeatureByMunicipality(features, municipality)
+        .then(function(feature) {
+          if (gen !== _searchGen) return;
+          var center = centroid(feature.geometry.rings);
+          map.setView([center[0], center[1]], 18);
+          updateURL(sheet, plan, parcelNbr, distCode);
 
-      return enrich(center[0], center[1]).then(function(extra) {
-        if (gen !== _searchGen) return;
-        showParcel(feature, extra);
-        btn.disabled = false;
-        btn.textContent = 'Find Parcel';
-      });
+          return enrich(center[0], center[1]).then(function(extra) {
+            if (gen !== _searchGen) return;
+            showParcel(feature, extra);
+            btn.disabled = false;
+            btn.textContent = 'Find Parcel';
+          });
+        });
     })
     .catch(function(err) {
       if (gen !== _searchGen) return;
@@ -349,12 +360,65 @@ function showAllListParcels(parcels) {
   });
 }
 
+function isSaleTabActive() {
+  var vs = document.getElementById('viewSale');
+  var vsd = document.getElementById('viewSaleDetail');
+  return (vs && vs.classList.contains('active')) || (vsd && vsd.classList.contains('active'));
+}
+
 map.on('click', function(e) {
   if (map.getZoom() < 16) {
     if (!isMobile() && !sidebar.classList.contains('hidden')) closeSidebar();
     return;
   }
   showError('');
+
+  if (isSaleTabActive()) {
+    findParcelByCoords(e.latlng.lat, e.latlng.lng)
+      .then(function(data) {
+        var feature = (data.features || [])[0];
+        if (!feature) return;
+        var attrs = feature.attributes;
+        var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
+        var sheet = clean(attrs.SHEET);
+        var plan = clean(attrs.PLAN_NBR);
+        var parcel = clean(attrs.PARCEL_NBR);
+        var listing = saleListings.find(function(l) {
+          return clean(l.sheet) === sheet && clean(l.plan_nbr) === plan && clean(l.parcel_nbr) === parcel;
+        });
+        function showSaleOnMap(theListing, theFeature) {
+          saleMarkersGroup.clearLayers();
+          _skipTabSwitch = true;
+          var center = centroid(theFeature.geometry.rings);
+          map.setView([center[0], center[1]], 18);
+          enrich(center[0], center[1]).then(function(extra) {
+            showParcel(theFeature, extra, '#16a34a');
+          });
+          var pl = theListing.price ? '€' + Number(theListing.price).toLocaleString() : '—';
+          var pi = L.divIcon({ className: 'sale-marker', html: '<div class="sale-marker-label">' + pl + '</div>', iconSize: [80, 24], iconAnchor: [40, 12] });
+          saleMarkersGroup.addLayer(L.marker([center[0], center[1]], { icon: pi }));
+          if (typeof showSaleDetailInPanel === 'function') showSaleDetailInPanel(theListing);
+          var el = document.getElementById('searchBarText');
+          if (el) {
+            el.textContent = theListing.title || ('Parcel ' + theListing.parcel_nbr);
+            document.getElementById('searchBar').classList.add('has-result');
+          }
+        }
+        if (listing) {
+          showSaleOnMap(listing, feature);
+          return;
+        }
+        return fetch('/api/listings/check?sheet=' + encodeURIComponent(sheet) + '&plan_nbr=' + encodeURIComponent(plan) + '&parcel_nbr=' + encodeURIComponent(parcel))
+          .then(function(r) { return r.json(); })
+          .then(function(results) {
+            var active = results.find(function(l) { return l.status === 'active'; });
+            if (!active) return;
+            showSaleOnMap(active, feature);
+          });
+      });
+    return;
+  }
+
   findParcelByCoords(e.latlng.lat, e.latlng.lng)
     .then(function(data) {
       var feature = (data.features || [])[0];
@@ -394,6 +458,8 @@ function loadFromURL() {
   if (lat && lng && z) {
     map.setView([lat, lng], z);
   }
+
+  if (params.get('listing') && params.get('tab') === 'sale') return;
 
   if (sheet && plan && parcelNbr) {
     document.getElementById('sheet').value = sheet;

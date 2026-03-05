@@ -545,7 +545,7 @@ export default {
 
       let sql = `SELECT id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
                         dist_code, district, municipality, planning_zone, title, price,
-                        description, contact, certificate_key, photo_keys, status, created_at
+                        description, contact, certificate_key, photo_keys, status, views, created_at
                  FROM sale_listings WHERE status = 'active'`;
       const binds = [];
 
@@ -580,7 +580,7 @@ export default {
       const norm = s => s ? s.replace(/\.0$/, '') : s;
       let sql = `SELECT id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
                 dist_code, district, municipality, planning_zone, title, price,
-                description, contact, certificate_key, photo_keys, status, created_at
+                description, contact, certificate_key, photo_keys, status, views, created_at
          FROM sale_listings
          WHERE REPLACE(sheet, '.0', '') = ?
          AND REPLACE(plan_nbr, '.0', '') = ?
@@ -596,6 +596,14 @@ export default {
 
       const { results } = await env.DB.prepare(sql).bind(...binds).all();
       return json(results || []);
+    }
+
+    if (path.match(/^\/api\/listings\/[^/]+\/view$/) && request.method === "POST") {
+      const id = decodeURIComponent(path.split("/")[3]);
+      await env.DB.prepare(
+        `UPDATE sale_listings SET views = COALESCE(views, 0) + 1 WHERE id = ?`
+      ).bind(id).run();
+      return json({ ok: true });
     }
 
     if (path === "/api/listings" && request.method === "POST") {
@@ -705,6 +713,41 @@ export default {
 
     // --- Admin ---
 
+    if (path === "/api/admin/stats" && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
+
+      const [users, lists, saved, totalViews] = await Promise.all([
+        env.DB.prepare(`SELECT COUNT(*) as c FROM users`).first(),
+        env.DB.prepare(`SELECT COUNT(*) as c FROM lists`).first(),
+        env.DB.prepare(`SELECT COUNT(*) as c FROM saved_parcels`).first(),
+        env.DB.prepare(`SELECT COALESCE(SUM(views), 0) as c FROM sale_listings`).first(),
+      ]);
+      return json({
+        users: users?.c || 0,
+        lists: lists?.c || 0,
+        saved_parcels: saved?.c || 0,
+        total_views: totalViews?.c || 0,
+      });
+    }
+
+    if (path === "/api/admin/lists" && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
+
+      const { results } = await env.DB.prepare(
+        `SELECT l.id, l.name, l.visibility, l.created_at,
+                u.name as owner_name, u.email as owner_email, u.picture as owner_picture,
+                COUNT(p.id) as parcel_count
+         FROM lists l
+         LEFT JOIN users u ON u.id = l.user_id
+         LEFT JOIN saved_parcels p ON p.list_id = l.id
+         GROUP BY l.id
+         ORDER BY datetime(l.created_at) DESC LIMIT 500`
+      ).all();
+      return json(results || []);
+    }
+
     if (path === "/api/admin/users" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
@@ -795,6 +838,7 @@ export default {
         `SELECT * FROM sale_listings WHERE id = ? AND status = 'active'`
       ).bind(id).first();
       if (!listing) return new Response("Listing not found", { status: 404, headers: { "Content-Type": "text/html" } });
+      ctx.waitUntil(env.DB.prepare(`UPDATE sale_listings SET views = COALESCE(views, 0) + 1 WHERE id = ?`).bind(id).run());
       const html = renderListingDetailPage(listing, id, getSiteUrl(url), url.origin);
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300, s-maxage=3600" } });
     }

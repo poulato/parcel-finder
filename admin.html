@@ -29,6 +29,10 @@
     .admin-denied h2 { margin-bottom: 8px; }
     .admin-denied p { color: #94a3b8; font-size: 14px; }
     .admin-empty { text-align: center; padding: 40px 20px; color: #64748b; font-size: 14px; }
+    .stats-bar { display: flex; gap: 12px; margin-bottom: 20px; }
+    .stat-card { flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 16px; }
+    .stat-card .stat-value { font-size: 24px; font-weight: 700; color: #f1f5f9; }
+    .stat-card .stat-label { font-size: 12px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
     .listing-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 12px; transition: border-color .15s; }
     .listing-card:hover { border-color: #475569; }
     .listing-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -101,6 +105,11 @@
     </div>
 
     <div id="adminPanel" style="display:none;">
+      <div class="stats-bar" id="statsBar">
+        <div class="stat-card"><div class="stat-value" id="statLists">–</div><div class="stat-label">Saved Lists</div></div>
+        <div class="stat-card"><div class="stat-value" id="statParcels">–</div><div class="stat-label">Saved Parcels</div></div>
+        <div class="stat-card"><div class="stat-value" id="statViews">–</div><div class="stat-label">Ad Views</div></div>
+      </div>
       <div class="admin-tabs">
         <button class="admin-tab active" data-status="pending" onclick="switchAdminTab('pending')">Pending <span class="count" id="countPending">0</span></button>
         <button class="admin-tab" data-status="active" onclick="switchAdminTab('active')">Active <span class="count" id="countActive">0</span></button>
@@ -180,6 +189,8 @@ function switchAdminTab(status) {
   });
   if (status === 'users') {
     loadUsers();
+  } else if (status === 'lists') {
+    loadAdminLists();
   } else {
     loadListings(status);
   }
@@ -199,6 +210,13 @@ function loadAllCounts() {
     .then(function(data) {
       var el = document.getElementById('countUsers');
       if (el) el.textContent = data.length || 0;
+    });
+  fetch(API_BASE + '/admin/stats', { headers: adminAuthHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      document.getElementById('statLists').textContent = data.lists || 0;
+      document.getElementById('statParcels').textContent = data.saved_parcels || 0;
+      document.getElementById('statViews').textContent = data.total_views || 0;
     });
 }
 
@@ -261,6 +279,7 @@ function renderListingCard(l, status) {
         '<div class="listing-card-meta">' +
           (loc ? '<span>' + escapeHTML(loc) + '</span>' : '') +
           '<span>&bull; Parcel ' + l.parcel_nbr + ' &bull; ' + l.sheet + '/' + l.plan_nbr + '</span>' +
+          '<span>&bull; 👁 ' + (l.views || 0) + ' views</span>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -298,6 +317,32 @@ function loadUsers() {
     })
     .catch(function() {
       container.innerHTML = '<div class="admin-empty">Failed to load users.</div>';
+    });
+}
+
+function loadAdminLists() {
+  var container = document.getElementById('listingsContainer');
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  fetch(API_BASE + '/admin/lists', { headers: adminAuthHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(lists) {
+      if (!lists.length) {
+        container.innerHTML = '<div class="admin-empty">No saved lists.</div>';
+        return;
+      }
+      var html = '<table class="user-table"><thead><tr><th>List Name</th><th>Owner</th><th>Parcels</th><th>Created</th></tr></thead><tbody>';
+      html += lists.map(function(l) {
+        var avatar = l.owner_picture ? '<img class="user-row-avatar" src="' + escapeHTML(l.owner_picture) + '" alt="" />' : '';
+        return '<tr><td><strong>' + escapeHTML(l.name || 'Untitled') + '</strong></td>' +
+          '<td><span class="user-row-name">' + avatar + escapeHTML(l.owner_name || l.owner_email || 'Unknown') + '</span></td>' +
+          '<td>' + (l.parcel_count || 0) + '</td>' +
+          '<td>' + formatDate(l.created_at) + '</td></tr>';
+      }).join('');
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    })
+    .catch(function() {
+      container.innerHTML = '<div class="admin-empty">Failed to load lists.</div>';
     });
 }
 

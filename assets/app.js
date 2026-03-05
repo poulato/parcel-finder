@@ -39,6 +39,12 @@ function switchTab(tabName) {
   } else if (typeof clearSaleMarkers === 'function') {
     clearSaleMarkers();
   }
+  var tabKey = tabName === 'details' ? 'search' : (tabName === 'listParcels' ? 'list' : tabName);
+  if (['search', 'list', 'sale'].indexOf(tabKey) !== -1) {
+    var u = new URL(window.location.href);
+    u.searchParams.set('tab', tabKey);
+    history.replaceState(null, '', u.toString());
+  }
 }
 
 document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
@@ -67,6 +73,15 @@ function openSidebar() {
   sidebar.classList.remove('hidden');
   if (isMobile()) backdropEl.classList.add('visible');
   setTimeout(function() { map.invalidateSize(); }, 300);
+}
+
+function handleSearchBarClear() {
+  if (isSaleTabActive()) {
+    document.getElementById('backToSaleList').click();
+    return;
+  }
+  doClear();
+  openSearchPanel();
 }
 
 function openSearchPanel() {
@@ -100,6 +115,11 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
     }
 
     if (tab === 'list') doClear();
+    if (tab === 'sale') {
+      var u = new URL(window.location.href);
+      u.searchParams.delete('listing');
+      history.replaceState(null, '', u.toString());
+    }
     switchTab(effectiveTab);
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
@@ -123,6 +143,11 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
     }
 
     if (tab === 'list') doClear();
+    if (tab === 'sale') {
+      var u = new URL(window.location.href);
+      u.searchParams.delete('listing');
+      history.replaceState(null, '', u.toString());
+    }
     switchTab(effectiveTab);
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
@@ -250,10 +275,12 @@ document.getElementById('bottomListBtn').addEventListener('click', function() {
   window.location.href = listingsUrl;
 });
 
+var _urlTabParam = new URLSearchParams(window.location.search).get('tab');
+if (_urlTabParam && _urlTabParam !== 'search') { _skipTabSwitch = true; }
 loadFromURL();
 
 (function() {
-  var tabParam = new URLSearchParams(window.location.search).get('tab');
+  var tabParam = _urlTabParam;
   if (tabParam && ['search', 'list', 'sale'].includes(tabParam)) {
     switchTab(tabParam === 'search' ? (currentParcel ? 'details' : 'search') : tabParam);
     if (isMobile()) {

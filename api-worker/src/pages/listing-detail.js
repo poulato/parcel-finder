@@ -1,7 +1,7 @@
 import { esc, renderNavBar, renderAppMenu, renderMobileBottomBar, GTM_HEAD, GTM_BODY } from '../layout.js';
 
 export function renderListingDetailPage(listing, id, siteUrl, apiOrigin) {
-  const appUrl = `${siteUrl}/?sheet=${listing.sheet}&plan=${listing.plan_nbr}&parcel=${listing.parcel_nbr}&district=${listing.dist_code || ''}`;
+  const appUrl = `${siteUrl}/?tab=sale&listing=${encodeURIComponent(id)}`;
   const title = listing.title || `Land for Sale – Parcel ${listing.parcel_nbr}`;
   const price = listing.price ? `€${Number(listing.price).toLocaleString()}` : 'Negotiable';
   const loc = listing.municipality || listing.district || 'Cyprus';

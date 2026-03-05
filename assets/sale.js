@@ -3,6 +3,12 @@ var _saleMapGen = 0;
 var lightboxImages = [];
 var lightboxIndex = 0;
 
+function addSalePriceMarker(listing, center) {
+  var pl = listing.price ? '€' + Number(listing.price).toLocaleString() : '—';
+  var pi = L.divIcon({ className: 'sale-marker', html: '<div class="sale-marker-label">' + pl + '</div>', iconSize: [80, 24], iconAnchor: [40, 12] });
+  saleMarkersGroup.addLayer(L.marker([center[0], center[1]], { icon: pi }));
+}
+
 function openLightbox(src, allSrcs) {
   lightboxImages = allSrcs || [src];
   lightboxIndex = Math.max(0, lightboxImages.indexOf(src));
@@ -74,8 +80,38 @@ async function loadSaleListings(filters) {
     console.error(e);
     saleListings = [];
   }
-  renderSaleListings();
-  await showSaleListingsOnMap();
+  var pendingId = new URLSearchParams(window.location.search).get('listing');
+  var match = pendingId ? saleListings.find(function(l) { return l.id === pendingId; }) : null;
+
+  if (match) {
+    if (filterBtn) { filterBtn.disabled = false; filterBtn.textContent = 'Search Listings'; }
+    showSaleDetailInPanel(match);
+    var searchBarTextEl = document.getElementById('searchBarText');
+    var searchBarEl = document.getElementById('searchBar');
+    if (searchBarTextEl) {
+      searchBarTextEl.textContent = match.title || ('Parcel ' + match.parcel_nbr);
+      searchBarEl.classList.add('has-result');
+    }
+    _skipTabSwitch = true;
+    findParcel(match.sheet, match.plan_nbr, match.parcel_nbr, match.dist_code)
+      .then(function(data) {
+        var features = data.features || [];
+        if (!features.length) return;
+        return pickFeatureByMunicipality(features, match.municipality)
+          .then(function(feature) {
+            saleMarkersGroup.clearLayers();
+            var center = centroid(feature.geometry.rings);
+            map.setView([center[0], center[1]], 18);
+            addSalePriceMarker(match, center);
+            return enrich(center[0], center[1]).then(function(extra) {
+              showParcel(feature, extra, '#16a34a');
+            });
+          });
+      });
+  } else {
+    renderSaleListings();
+    await showSaleListingsOnMap();
+  }
   if (filterBtn) { filterBtn.disabled = false; filterBtn.textContent = 'Search Listings'; }
 }
 
@@ -110,6 +146,7 @@ function renderSaleListings() {
             '<div class="listing-card-title">' + escapeHTML(l.title || 'Parcel ' + l.parcel_nbr) + '</div>' +
             '<div class="listing-card-price">' + priceText + ' ' + verifiedBadge + '</div>' +
             (loc ? '<div class="listing-card-loc"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ' + escapeHTML(loc) + '</div>' : '') +
+            '<div class="listing-card-loc" style="font-size:11px;color:#64748b">👁 ' + (l.views || 0) + ' views</div>' +
           '</div>' +
           thumbHTML +
         '</div>' +
@@ -148,7 +185,7 @@ function showSaleListingsOnMap() {
       if (!r || !r.feature) return;
       var coords = r.feature.geometry.rings[0].map(function(p) { return [p[1], p[0]]; });
       var poly = L.polygon(coords, {
-        color: '#ff0000', weight: 4, fillColor: '#ff0000', fillOpacity: 0.3
+        color: '#16a34a', weight: 4, fillColor: '#16a34a', fillOpacity: 0.2
       });
       function onListingClick() {
         var listing = saleListings.find(function(l) { return l.id === r.listing.id; });
@@ -159,8 +196,9 @@ function showSaleListingsOnMap() {
           map.setView([c[0], c[1]], 18);
           var sb = document.getElementById('searchBar');
           if (sb) sb.classList.add('loading');
+          addSalePriceMarker(listing, c);
           enrich(c[0], c[1]).then(function(extra) {
-            showParcel(r.feature, extra);
+            showParcel(r.feature, extra, '#16a34a');
           }).finally(function() { if (sb) sb.classList.remove('loading'); });
           showSaleDetailInPanel(listing);
           var el = document.getElementById('searchBarText');
@@ -226,8 +264,9 @@ document.getElementById('saleResults').addEventListener('click', function(e) {
         .then(function(feature) {
           var center = centroid(feature.geometry.rings);
           map.setView([center[0], center[1]], 18);
+          if (listing) addSalePriceMarker(listing, center);
           return enrich(center[0], center[1]).then(function(extra) {
-            showParcel(feature, extra);
+            showParcel(feature, extra, '#16a34a');
           });
         });
     })
@@ -241,6 +280,7 @@ document.getElementById('backToSaleList').addEventListener('click', function() {
   currentParcel = null;
   document.getElementById('viewSaleDetail').classList.remove('active');
   document.getElementById('viewSale').classList.add('active');
+  renderSaleListings();
   showSaleListingsOnMap();
   var searchBarTextEl = document.getElementById('searchBarText');
   var searchBarEl = document.getElementById('searchBar');
@@ -248,6 +288,9 @@ document.getElementById('backToSaleList').addEventListener('click', function() {
     searchBarTextEl.textContent = 'Search parcels';
     searchBarEl.classList.remove('has-result');
   }
+  var u = new URL(window.location.href);
+  u.searchParams.delete('listing');
+  history.replaceState(null, '', u.toString());
 });
 
 document.getElementById('saleFilterBtn').addEventListener('click', function() {
@@ -555,6 +598,7 @@ function buildListingDetailHTML(listing) {
     '<div class="listing-detail-meta">' +
       (loc ? '<span class="listing-detail-loc"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ' + escapeHTML(loc) + '</span>' : '') +
       '<span class="listing-detail-parcel">&bull; Parcel ' + listing.parcel_nbr + ' &bull; ' + listing.sheet + '/' + listing.plan_nbr + '</span>' +
+      '<span>&bull; 👁 ' + (listing.views || 0) + ' views</span>' +
     '</div>' +
     (listing.description ? '<div class="listing-detail-desc">' + escapeHTML(listing.description) + '</div>' : '') +
     '<div class="listing-detail-footer">' +
@@ -567,7 +611,10 @@ function buildListingDetailHTML(listing) {
         escapeHTML(listing.contact) +
       '</div>' +
     '</div>' +
-    (listing.status === 'active' ? '<button class="listing-share-btn" onclick="copyListingLink(\'' + listing.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Share Listing</button>' : '') +
+    '<div style="display:flex;gap:8px;margin-top:8px">' +
+      (listing.status === 'active' ? '<button class="listing-share-btn" style="flex:1" onclick="copyListingLink(\'' + listing.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Share</button>' : '') +
+      '<button class="listing-share-btn" style="flex:1" onclick="goToParcelSearch(\'' + escapeHTML(listing.sheet) + '\',\'' + escapeHTML(listing.plan_nbr) + '\',\'' + escapeHTML(listing.parcel_nbr) + '\',\'' + escapeHTML(listing.dist_code || '') + '\',\'' + escapeHTML(listing.municipality || '') + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Parcel Details</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -582,6 +629,17 @@ function copyPhone(num) {
   });
 }
 
+function goToParcelSearch(sheet, plan, parcel, dist, municipality) {
+  saleMarkersGroup.clearLayers();
+  document.getElementById('sheet').value = sheet;
+  document.getElementById('plan').value = plan;
+  document.getElementById('parcel').value = parcel;
+  document.getElementById('district').value = dist || '';
+  _searchMunicipality = municipality || null;
+  switchTab('search');
+  doSearch();
+}
+
 function copyListingLink(listingId) {
   var listingUrl = window.location.origin + '/listing/' + listingId;
   navigator.clipboard.writeText(listingUrl).then(function() {
@@ -594,6 +652,20 @@ function showSaleDetailInPanel(listing) {
   document.querySelectorAll('.sidebar-view').forEach(function(v) { v.classList.remove('active'); });
   document.getElementById('viewSaleDetail').classList.add('active');
   document.getElementById('saleDetailContent').innerHTML = buildListingDetailHTML(listing);
+  openSidebar();
+  if (typeof isMobile === 'function' && isMobile()) {
+    document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+    var saleBtn = document.querySelector('.bottom-tab[data-tab="sale"]');
+    if (saleBtn) saleBtn.classList.add('active');
+  } else {
+    document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+    var saleBtn = document.querySelector('.rail-btn[data-tab="sale"]');
+    if (saleBtn) saleBtn.classList.add('active');
+  }
+  fetch(API_BASE + '/listings/' + encodeURIComponent(listing.id) + '/view', { method: 'POST' }).catch(function() {});
+  var u = new URL(window.location.href);
+  u.searchParams.set('listing', listing.id);
+  history.replaceState(null, '', u.toString());
 }
 
 function showListingDetail(listing) {
@@ -621,18 +693,20 @@ function updateSaleButton(listing) {
 }
 
 async function handleSaleButtonClick() {
-  if (!authUser) { handleAuthClick(); return; }
   if (!currentParcel) return;
 
   var listing = await checkParcelListing();
+  if (listing && listing.status === 'active' && (!authUser || listing.user_id !== authUser.id)) {
+    showListingDetail(listing);
+    return;
+  }
+  if (!authUser) { handleAuthClick(); return; }
   if (!listing) {
     showSaleForm(null);
     return;
   }
   if (listing.user_id === authUser.id) {
     showSaleForm(listing);
-  } else if (listing.status === 'active') {
-    showListingDetail(listing);
   } else {
     showSaleForm(null);
   }
@@ -641,3 +715,4 @@ async function handleSaleButtonClick() {
 document.getElementById('detailsSaleBtn').addEventListener('click', function() {
   handleSaleButtonClick();
 });
+
