@@ -3,3 +3,4 @@ __pycache__/
 .env
 .venv/
 api-worker/.wrangler/
+api-worker/.dev.vars

@@ -133,6 +133,12 @@ function restoreSession() {
         authToken = token;
       }
       updateAuthUI();
+      if (authToken) {
+        fetch(API_BASE + '/auth/register', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders())
+        }).catch(function() {});
+      }
       return true;
     } catch (e) {
       authUser = null;

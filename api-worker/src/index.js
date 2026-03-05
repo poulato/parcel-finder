@@ -124,7 +124,7 @@ async function getListAccess(env, listId, user) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -168,7 +168,7 @@ export default {
       ).bind(user.id, user.email, user.name || null, user.picture || null).run();
 
       const welcome = welcomeEmail(user.name);
-      sendEmail(env, user.email, welcome.subject, welcome.html);
+      ctx.waitUntil(sendEmail(env, user.email, welcome.subject, welcome.html));
 
       return json({ registered: true });
     }
@@ -637,7 +637,7 @@ export default {
 
       if (!autoApprove) {
         const pending = listingPendingEmail(body.title || `Parcel ${body.parcel_nbr}`, body.parcel_nbr, body.sheet, body.plan_nbr);
-        sendEmail(env, user.email, pending.subject, pending.html);
+        ctx.waitUntil(sendEmail(env, user.email, pending.subject, pending.html));
       }
 
       return json(row || { id }, 201);
@@ -756,10 +756,10 @@ export default {
         const listingTitle = listing.title || `Parcel ${listing.parcel_nbr}`;
         if (body.status === 'active') {
           const approved = listingApprovedEmail(owner.name, listingTitle, id);
-          sendEmail(env, owner.email, approved.subject, approved.html);
+          ctx.waitUntil(sendEmail(env, owner.email, approved.subject, approved.html));
         } else if (body.status === 'rejected') {
           const rejected = listingRejectedEmail(owner.name, listingTitle);
-          sendEmail(env, owner.email, rejected.subject, rejected.html);
+          ctx.waitUntil(sendEmail(env, owner.email, rejected.subject, rejected.html));
         }
       }
 

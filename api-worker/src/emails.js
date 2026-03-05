@@ -9,7 +9,7 @@ export async function sendEmail(env, to, subject, htmlBody) {
       method: "POST",
       headers: { "Authorization": `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Geoktimonas <contact@geoktimonas.com>",
+        from: "Geoktimonas <contact@mail.geoktimonas.com>",
         to: [to],
         subject,
         html: htmlBody,
