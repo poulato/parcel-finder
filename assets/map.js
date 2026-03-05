@@ -1,5 +1,6 @@
 var DLS_BASE = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
 var currentParcel = null;
+var _skipTabSwitch = false;
 
 var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4], 9);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -135,13 +136,19 @@ function showParcel(feature, extra) {
   parcelSavedLists = [];
   updateSaveButton();
   checkParcelSaved();
-  switchTab('details');
-  if (isMobile()) {
-    document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
-  } else {
-    document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+
+  var skipTab = _skipTabSwitch;
+  _skipTabSwitch = false;
+
+  if (!skipTab) {
+    switchTab('details');
+    if (isMobile()) {
+      document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+    } else {
+      document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+    }
+    if (sidebar.classList.contains('hidden')) openSidebar();
   }
-  if (sidebar.classList.contains('hidden')) openSidebar();
 
   var searchBarEl = document.getElementById('searchBar');
   var searchBarTextEl = document.getElementById('searchBarText');

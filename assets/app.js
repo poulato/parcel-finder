@@ -5,6 +5,7 @@ var API_BASE = window.location.hostname === 'localhost'
 // --- Sidebar & Navigation ---
 
 function switchTab(tabName) {
+  closeSavePanel();
   document.querySelectorAll('.sidebar-tab').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
   });

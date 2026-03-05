@@ -180,6 +180,7 @@ document.getElementById('listParcels').addEventListener('click', async function(
   var parcelItem = e.target.closest('[data-goto-parcel]');
   if (parcelItem) {
     var parcelData = JSON.parse(decodeURIComponent(parcelItem.getAttribute('data-goto-parcel')));
+    _skipTabSwitch = true;
     navigateToParcel(parcelData.sheet, parcelData.plan_nbr, parcelData.parcel_nbr, parcelData.dist_code);
   }
 });
@@ -390,6 +391,7 @@ document.getElementById('sharedListParcels').addEventListener('click', function(
   var item = e.target.closest('[data-goto-parcel]');
   if (item) {
     var parcelData = JSON.parse(decodeURIComponent(item.getAttribute('data-goto-parcel')));
+    _skipTabSwitch = true;
     navigateToParcel(parcelData.sheet, parcelData.plan_nbr, parcelData.parcel_nbr, parcelData.dist_code);
   }
 });
