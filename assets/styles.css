@@ -521,14 +521,14 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px;
   flex-shrink: 0;
   margin-bottom: 12px;
   border-radius: 8px;
   border: none;
   background: #0ea5a0;
   color: #fff;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
