@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=55" />
+  <link rel="stylesheet" href="./assets/styles.css?v=56" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -263,8 +263,11 @@
   </nav>
 
   <div id="searchBar">
+    <button id="searchBarMenu" onclick="event.stopPropagation(); toggleAppMenu()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
     <div id="searchBarMain" onclick="event.stopPropagation(); openSearchPanel()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <svg id="searchBarIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span id="searchBarText">Search parcels</span>
     </div>
     <button id="searchBarClear" onclick="event.stopPropagation(); handleSearchBarClear();">&times;</button>
@@ -300,10 +303,6 @@
   </div>
 
   <nav id="bottomBar">
-    <button class="bottom-tab" onclick="toggleAppMenu()">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      <span>Menu</span>
-    </button>
     <button class="bottom-tab active" data-tab="search">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span>Search</span>

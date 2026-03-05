@@ -190,6 +190,16 @@ body {
   transition: background 0.15s;
   overflow: hidden;
 }
+#searchBarMenu {
+  display: none;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+#searchBarMenu:hover { color: #f1f5f9; }
 #searchBar::after {
   content: '';
   position: absolute;
@@ -964,6 +974,8 @@ body {
     background: #1e293b;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
   }
+  #searchBarMenu { display: flex; align-items: center; }
+  #searchBarIcon { display: none; }
   #searchBar svg { color: #64748b; }
   #searchBarText { color: #94a3b8; font-size: 14px; }
   #searchBar.has-result #searchBarText { color: #f1f5f9; }
