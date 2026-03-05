@@ -832,7 +832,7 @@ body {
 #detailsContent h3 { font-size: 16px; color: #f1f5f9; margin-bottom: 8px; }
 #detailsContent .label { color: #94a3b8; }
 #detailsContent .value { color: #f1f5f9; font-weight: 600; }
-#detailsContent .value.zone-detail { font-weight: 400; font-size: 12px; display: block; margin-top: 2px; line-height: 1.5; }
+#detailsContent .value.zone-detail { font-weight: 400; font-size: 12px; }
 #detailsContent > div { padding: 4px 0; font-size: 13px; }
 
 .details-divider {
