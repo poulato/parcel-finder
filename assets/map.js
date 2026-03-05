@@ -33,7 +33,15 @@ function dlsQuery(layerId, params) {
   var qs = Object.keys(params).map(function(k) {
     return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
   }).join('&');
-  return fetch(DLS_BASE + '/' + layerId + '/query?' + qs).then(function(r) { return r.json(); });
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 15000);
+  return fetch(DLS_BASE + '/' + layerId + '/query?' + qs, { signal: controller.signal })
+    .then(function(r) { clearTimeout(timer); return r.json(); })
+    .catch(function(err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') throw new Error('DLS request timed out');
+      throw err;
+    });
 }
 
 var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR';

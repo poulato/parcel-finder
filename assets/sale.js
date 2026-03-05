@@ -264,7 +264,6 @@ function showSaleListingsOnMap() {
 
 function clearSaleMarkers() {
   _saleMapGen++;
-  _searchGen++;
   saleMarkersGroup.clearLayers();
 }
 
@@ -735,7 +734,7 @@ async function handleSaleButtonClick() {
     showListingDetail(listing);
     return;
   }
-  if (!authUser) { handleAuthClick(); return; }
+  if (!authUser) { handleAuthClick('Sign in to list a parcel for sale'); return; }
   if (!listing) {
     showSaleForm(null);
     return;

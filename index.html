@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=56" />
+  <link rel="stylesheet" href="./assets/styles.css?v=57" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -417,11 +417,19 @@
   </noscript>
 
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/auth.js?v=13" defer></script>
-  <script src="./assets/map.js?v=56" defer></script>
+  <div id="authModal" class="auth-modal-backdrop hidden" onclick="closeAuthModal()">
+    <div class="auth-modal" onclick="event.stopPropagation()">
+      <button class="auth-modal-close" onclick="closeAuthModal()">&times;</button>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <p id="authModalMsg">Sign in to continue</p>
+      <div id="googleSignInModal"></div>
+    </div>
+  </div>
+  <script src="./assets/auth.js?v=14" defer></script>
+  <script src="./assets/map.js?v=57" defer></script>
   <script src="./assets/lists.js?v=11" defer></script>
-  <script src="./assets/save.js?v=12" defer></script>
-  <script src="./assets/sale.js?v=55" defer></script>
+  <script src="./assets/save.js?v=14" defer></script>
+  <script src="./assets/sale.js?v=58" defer></script>
   <script src="./assets/app.js?v=40" defer></script>
 </body>
 </html>

@@ -40,6 +40,7 @@ function onSignIn(response) {
   };
   localStorage.setItem('geo_auth_token', authToken);
   localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
+  closeAuthModal();
   updateAuthUI();
   fetch(API_BASE + '/auth/register', {
     method: 'POST',
@@ -75,18 +76,24 @@ function closeUserMenu() {
   document.getElementById('userMenu').classList.add('hidden');
 }
 
-function handleAuthClick() {
+function handleAuthClick(message) {
   if (authUser) {
     toggleUserMenu();
     return;
   }
-  var container = document.getElementById('googleSignInDiv');
-  var gBtn = container && (container.querySelector('[role="button"]') || container.querySelector('div[style]'));
-  if (gBtn) {
-    gBtn.click();
-  } else if (window.google && google.accounts) {
-    google.accounts.id.prompt();
-  }
+  openAuthModal(message);
+}
+
+function openAuthModal(message) {
+  var modal = document.getElementById('authModal');
+  var msg = document.getElementById('authModalMsg');
+  if (msg) msg.textContent = message || 'Sign in to continue';
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeAuthModal() {
+  var modal = document.getElementById('authModal');
+  if (modal) modal.classList.add('hidden');
 }
 
 function updateAuthUI() {
@@ -173,6 +180,16 @@ function initGoogleSignIn() {
   var listContainer = document.getElementById('googleSignInList');
   if (listContainer) {
     google.accounts.id.renderButton(listContainer, {
+      type: 'standard',
+      size: 'large',
+      theme: 'filled_black',
+      text: 'signin_with',
+      width: 250,
+    });
+  }
+  var modalContainer = document.getElementById('googleSignInModal');
+  if (modalContainer) {
+    google.accounts.id.renderButton(modalContainer, {
       type: 'standard',
       size: 'large',
       theme: 'filled_black',

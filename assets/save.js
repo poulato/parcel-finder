@@ -77,7 +77,7 @@ function renderSavePanel() {
 }
 
 async function openSavePanel() {
-  if (!authUser) { handleAuthClick(); return; }
+  if (!authUser) { handleAuthClick('Sign in to save parcels'); return; }
   await checkParcelSaved();
   var title = document.querySelector('.save-panel-title');
   title.textContent = parcelSavedLists.length > 0 ? 'Saved in your lists' : 'Save to list';
