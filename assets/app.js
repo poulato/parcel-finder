@@ -66,14 +66,6 @@ function closeSidebar() {
   } else {
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
   }
-  if (typeof clearSaleMarkers === 'function') clearSaleMarkers();
-  if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
-  clearListParcels();
-  currentParcel = null;
-  var sb = document.getElementById('searchBar');
-  var sbt = document.getElementById('searchBarText');
-  if (sb && sbt) { sbt.textContent = 'Search parcels'; sb.classList.remove('has-result'); }
-  history.replaceState(null, '', window.location.pathname);
   setTimeout(function() { map.invalidateSize(); }, 300);
 }
 
@@ -107,55 +99,64 @@ function openSearchPanel() {
   openSidebar();
 }
 
+function isTabOwnedView(tab) {
+  var cur = document.querySelector('.sidebar-view.active');
+  if (!cur) return false;
+  var id = cur.id;
+  if (tab === 'sale') return id === 'viewSale' || id === 'viewSaleDetail';
+  if (tab === 'search') return id === 'viewSearch' || id === 'viewDetails';
+  if (tab === 'list') return id === 'viewList' || id === 'viewListParcels';
+  return id === 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+}
+
+function handleTabClick(tab, btn, isMobileTab) {
+  var effectiveTab = (tab === 'search' && currentParcel) ? 'details' : tab;
+  var isOpen = !sidebar.classList.contains('hidden');
+  var sameTab = isTabOwnedView(tab);
+
+  if (sameTab && isOpen) {
+    closeSidebar();
+    return;
+  }
+  if (sameTab && !isOpen) {
+    openSidebar();
+    if (isMobileTab) {
+      document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+    } else {
+      document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+    }
+    btn.classList.add('active');
+    return;
+  }
+
+  if (tab === 'list') doClear();
+  if (tab === 'search') { doClear(); effectiveTab = 'search'; }
+  if (tab === 'sale') {
+    var u = new URL(window.location.href);
+    u.searchParams.delete('listing');
+    history.replaceState(null, '', u.toString());
+  }
+  switchTab(effectiveTab);
+  if (isMobileTab) {
+    document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+  } else {
+    document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+  }
+  btn.classList.add('active');
+  if (!isOpen) openSidebar();
+}
+
 // --- Bottom tabs (mobile) ---
 document.querySelectorAll('.bottom-tab').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    var tab = this.getAttribute('data-tab');
-    var effectiveTab = (tab === 'search' && currentParcel) ? 'details' : tab;
-    var isOpen = !sidebar.classList.contains('hidden');
-    var currentTab = document.querySelector('.sidebar-view.active');
-    var targetId = 'view' + effectiveTab.charAt(0).toUpperCase() + effectiveTab.slice(1);
-    var alreadyShowing = isOpen && currentTab && currentTab.id === targetId;
-
-    if (alreadyShowing) {
-      closeSidebar();
-      return;
-    }
-
-    if (tab === 'list') doClear();
-    if (tab === 'sale') {
-      var u = new URL(window.location.href);
-      u.searchParams.delete('listing');
-      history.replaceState(null, '', u.toString());
-    }
-    switchTab(effectiveTab);
-    document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
-    this.classList.add('active');
-    if (!isOpen) openSidebar();
+    handleTabClick(this.getAttribute('data-tab'), this, true);
   });
 });
 
 // --- Rail buttons (desktop) ---
 document.querySelectorAll('.rail-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    var tab = this.getAttribute('data-tab');
-    var effectiveTab = (tab === 'search' && currentParcel) ? 'details' : tab;
-    var isOpen = !sidebar.classList.contains('hidden');
-    var currentTab = document.querySelector('.sidebar-view.active');
-    var targetId = 'view' + effectiveTab.charAt(0).toUpperCase() + effectiveTab.slice(1);
-    var alreadyShowing = isOpen && currentTab && currentTab.id === targetId;
-
-    if (alreadyShowing) {
-      closeSidebar();
-      return;
-    }
-
-    if (tab === 'list') doClear();
-    if (tab === 'sale') {
-      var u = new URL(window.location.href);
-      u.searchParams.delete('listing');
-      history.replaceState(null, '', u.toString());
-    }
+    handleTabClick(this.getAttribute('data-tab'), this, false);
     switchTab(effectiveTab);
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');

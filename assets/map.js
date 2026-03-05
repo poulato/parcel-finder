@@ -4,7 +4,6 @@ var _skipTabSwitch = false;
 var _searchGen = 0;
 
 var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4], 9);
-L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 var topoBase = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -17,7 +16,8 @@ var satellite = L.tileLayer(
 );
 
 var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
-var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }, null, { position: 'bottomleft' }).addTo(map);
+var layerControl = L.control.layers({ 'DLS Cadastral + Topo': topoBase, 'Satellite': satellite }, null, { position: 'bottomright' }).addTo(map);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 var parcelLayer = null;
 var listParcelsGroup = L.layerGroup().addTo(map);
 var saleMarkersGroup = L.layerGroup().addTo(map);
