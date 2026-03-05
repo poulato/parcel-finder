@@ -53,6 +53,8 @@ ${GTM_HEAD}
 .card-loc{font-size:12px;color:#94a3b8}
 .cert{font-size:10px;color:#6ee7b7;background:#064e3b;padding:2px 7px;border-radius:10px;font-weight:600}
 .empty{text-align:center;color:#64748b;padding:40px 0}
+.free-listing-link{display:inline-block;padding:8px 16px;background:#0ea5a0;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s;white-space:nowrap}
+.free-listing-link:hover{background:#0d9488}
 .footer{margin-top:40px;padding-top:20px;border-top:1px solid #1e293b;font-size:12px;color:#475569;text-align:center}
 .footer a{color:#4a90d9;text-decoration:none}
 @media(max-width:700px){
@@ -73,7 +75,10 @@ ${GTM_BODY}
 ${renderAppMenu(apiOrigin)}
 ${renderNavBar(siteUrl, apiOrigin, 'list')}
 <div class="listings-main">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
 <h2>Land for Sale</h2>
+<a href="${siteUrl}/?tab=search" class="free-listing-link">+ Free Listing</a>
+</div>
 <p class="subtitle">${listings.length} listing${listings.length !== 1 ? 's' : ''} in ${esc(filterLabel)}</p>
 <div class="filters">
 <a class="filter-link${!district ? ' active' : ''}" href="${apiOrigin}/listings">All</a>
