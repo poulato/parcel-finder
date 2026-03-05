@@ -197,9 +197,13 @@ function showParcel(feature, extra, outlineColor) {
   if (!skipTab && !outlineColor) {
     switchTab('details');
     if (isMobile()) {
-      document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.bottom-tab').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === 'search');
+      });
     } else {
-      document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.rail-btn').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === 'search');
+      });
     }
     if (sidebar.classList.contains('hidden')) openSidebar();
   }
