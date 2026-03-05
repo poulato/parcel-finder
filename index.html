@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Geoktimonas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=7" />
+  <link rel="stylesheet" href="./assets/styles.css?v=10" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -110,10 +110,6 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Rename
             </button>
-            <button id="shareListBtn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-              Share
-            </button>
             <button id="deleteListBtn" class="menu-danger">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               Delete
@@ -121,10 +117,16 @@
           </div>
         </div>
       </div>
-      <button id="showAllParcelsBtn" class="show-all-btn" style="display:none;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-        Show All on Map
-      </button>
+      <div class="list-action-row">
+        <button id="showAllParcelsBtn" class="show-all-btn" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          Show All on Map
+        </button>
+        <button id="shareListBtn" class="show-all-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share
+        </button>
+      </div>
       <div id="listParcelsEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
       <div id="listParcels"></div>
     </div>
@@ -229,37 +231,45 @@
   <div id="shareModal" class="modal-backdrop hidden">
     <div class="modal-card share-modal-card">
       <div class="share-modal-header">
-        <h3>Share list</h3>
+        <h3 id="shareModalTitle">Share list</h3>
         <button id="shareModalClose" class="share-modal-x">&times;</button>
       </div>
-      <div class="share-toggle-row">
-        <div class="share-toggle-label">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          <div>
-            <div class="share-toggle-title">Public link</div>
-            <div class="share-toggle-desc">Anyone with the link can view this list</div>
+
+      <div id="shareLinksLoading" style="color:#64748b;font-size:13px;padding:12px 0;">Generating links...</div>
+
+      <div id="shareLinksContent" class="hidden">
+        <div class="share-option">
+          <div class="share-option-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </div>
+          <div class="share-option-info">
+            <div class="share-option-title">Send link to view</div>
+            <div class="share-option-desc">Anyone with the link will see the list</div>
+          </div>
+          <button id="copyViewLink" class="share-copy-btn">Copy link</button>
         </div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="sharePublicToggle" />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div id="shareLinkSection" class="share-link-section hidden">
-        <div class="share-link-row">
-          <input id="shareLinkInput" type="text" readonly />
-          <button id="shareCopyBtn" class="share-copy-btn">Copy</button>
+
+        <div class="share-option">
+          <div class="share-option-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </div>
+          <div class="share-option-info">
+            <div class="share-option-title">Invite to edit</div>
+            <div class="share-option-desc">Anyone with the link can modify this list</div>
+          </div>
+          <button id="copyEditLink" class="share-copy-btn">Copy link</button>
         </div>
-        <div id="shareCopied" class="share-copied hidden">Link copied!</div>
       </div>
+
+      <div id="shareCopiedMsg" class="share-copied hidden">Link copied!</div>
     </div>
   </div>
 
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/auth.js?v=7" defer></script>
-  <script src="./assets/map.js?v=7" defer></script>
-  <script src="./assets/lists.js?v=7" defer></script>
-  <script src="./assets/save.js?v=7" defer></script>
-  <script src="./assets/app.js?v=7" defer></script>
+  <script src="./assets/auth.js?v=10" defer></script>
+  <script src="./assets/map.js?v=10" defer></script>
+  <script src="./assets/lists.js?v=10" defer></script>
+  <script src="./assets/save.js?v=10" defer></script>
+  <script src="./assets/app.js?v=10" defer></script>
 </body>
 </html>

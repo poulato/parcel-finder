@@ -1,22 +1,38 @@
 var userLists = [];
+var sharedLists = [];
 var currentListId = null;
+var currentListRole = null;
 var currentListParcels = [];
+var pendingShareToken = null;
+
+function escapeHTML(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 function renderLists() {
   var container = document.getElementById('listsContainer');
   var emptyEl = document.getElementById('listsEmpty');
-  if (!userLists.length) {
+
+  var hasOwned = userLists.length > 0;
+  var hasShared = sharedLists.length > 0;
+
+  if (!hasOwned && !hasShared) {
     container.innerHTML = '';
     emptyEl.style.display = 'block';
     return;
   }
   emptyEl.style.display = 'none';
-  container.innerHTML = userLists.map(function(list) {
-    var shareBadge = list.visibility === 'public' ? '<span class="list-share-badge">Public</span>' : '';
+
+  var html = '';
+
+  html += userLists.map(function(list) {
+    var shareBadge = (list.share_token || list.edit_token) ? '<span class="list-share-badge">Shared</span>' : '';
     return (
       '<div class="lists-item" data-list-id="' + list.id + '">' +
         '<div>' +
-          '<div class="lists-item-name">' + list.name + shareBadge + '</div>' +
+          '<div class="lists-item-name">' + escapeHTML(list.name) + shareBadge + '</div>' +
           '<div class="lists-item-count">' + (list.parcel_count || 0) + ' parcels</div>' +
         '</div>' +
         '<div class="lists-item-actions">' +
@@ -33,6 +49,23 @@ function renderLists() {
       '</div>'
     );
   }).join('');
+
+  if (hasShared) {
+    html += '<div class="shared-with-me-label">Shared with me</div>';
+    html += sharedLists.map(function(list) {
+      var roleBadge = '<span class="list-role-badge">' + (list.role === 'editor' ? 'Can edit' : 'View only') + '</span>';
+      return (
+        '<div class="lists-item lists-item-shared" data-list-id="' + list.id + '" data-list-role="' + list.role + '">' +
+          '<div>' +
+            '<div class="lists-item-name">' + escapeHTML(list.name) + roleBadge + '</div>' +
+            '<div class="lists-item-count">' + (list.parcel_count || 0) + ' parcels</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  container.innerHTML = html;
 }
 
 async function loadLists() {
@@ -40,7 +73,14 @@ async function loadLists() {
   try {
     var res = await authFetch(API_BASE + '/lists');
     if (!res.ok) throw new Error('failed to load lists');
-    userLists = await res.json();
+    var data = await res.json();
+    if (Array.isArray(data)) {
+      userLists = data;
+      sharedLists = [];
+    } else {
+      userLists = data.owned || [];
+      sharedLists = data.shared || [];
+    }
     renderLists();
   } catch (err) {
     console.error(err);
@@ -107,20 +147,34 @@ document.getElementById('listsContainer').addEventListener('click', function(e) 
 
   var item = e.target.closest('[data-list-id]');
   if (item) {
-    openListParcels(item.getAttribute('data-list-id'));
+    var role = item.getAttribute('data-list-role') || 'owner';
+    openListParcels(item.getAttribute('data-list-id'), role);
   }
 });
 
 document.addEventListener('click', function() {
   closeAllListMenus();
+  closeAllParcelMenus();
   var detailDrop = document.getElementById('listDetailDropdown');
   if (detailDrop) detailDrop.classList.add('hidden');
 });
 
-async function openListParcels(listId) {
+async function openListParcels(listId, role) {
   var list = userLists.find(function(l) { return l.id === listId; });
+  var isShared = false;
+  if (!list) {
+    list = sharedLists.find(function(l) { return l.id === listId; });
+    isShared = true;
+  }
   if (!list) return;
+
   currentListId = listId;
+  currentListRole = role || (isShared ? (list.role || 'viewer') : 'owner');
+
+  var isOwner = currentListRole === 'owner';
+  var isEditor = currentListRole === 'editor';
+  var canEdit = isOwner || isEditor;
+
   var titleEl = document.getElementById('listParcelsTitle');
   var renameInput = document.getElementById('listParcelsRename');
   titleEl.textContent = list.name;
@@ -131,6 +185,12 @@ async function openListParcels(listId) {
   document.getElementById('listParcelsEmpty').style.display = 'none';
   document.getElementById('showAllParcelsBtn').style.display = 'none';
   currentListParcels = [];
+
+  var detailMenu = document.querySelector('.list-detail-menu');
+  var shareBtn = document.getElementById('shareListBtn');
+  if (detailMenu) detailMenu.style.display = isOwner ? '' : 'none';
+  if (shareBtn) shareBtn.style.display = isOwner ? '' : 'none';
+
   switchTab('listParcels');
 
   try {
@@ -144,28 +204,198 @@ async function openListParcels(listId) {
     currentListParcels = parcels;
     document.getElementById('showAllParcelsBtn').style.display = '';
     document.getElementById('listParcels').innerHTML = parcels.map(function(item) {
-      var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
-      var area = item.municipality || item.district || '\u2014';
-      var data = encodeURIComponent(JSON.stringify({
-        sheet: item.sheet, plan_nbr: item.plan_nbr,
-        parcel_nbr: item.parcel_nbr, dist_code: item.dist_code
-      }));
-      return (
-        '<div class="parcel-list-item" data-goto-parcel="' + data + '">' +
-          '<div class="parcel-list-info"><div>' + line + '</div><div style="color:#94a3b8;font-size:11px;">' + area + '</div></div>' +
-          '<button data-remove-id="' + item.id + '">Remove</button>' +
-        '</div>'
-      );
+      return renderParcelItem(item, canEdit);
     }).join('');
   } catch (err) {
     console.error(err);
   }
 }
 
+function renderParcelItem(item, canEdit) {
+  var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+  var area = item.municipality || item.district || '\u2014';
+  var data = encodeURIComponent(JSON.stringify({
+    sheet: item.sheet, plan_nbr: item.plan_nbr,
+    parcel_nbr: item.parcel_nbr, dist_code: item.dist_code
+  }));
+  var noteHTML = item.note
+    ? '<div class="parcel-note" data-note-id="' + item.id + '">' +
+        '<span class="parcel-note-text">' + escapeHTML(item.note) + '</span>' +
+      '</div>'
+    : '';
+  var noteLbl = item.note ? 'Edit Note' : 'Add Note';
+  var menuHTML = '';
+  if (canEdit) {
+    menuHTML =
+      '<div class="parcel-item-actions">' +
+        '<button class="parcel-menu-btn" data-parcel-menu="' + item.id + '" title="Options">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
+        '</button>' +
+        '<div class="parcel-menu-dropdown hidden" data-parcel-dropdown="' + item.id + '">' +
+          '<button data-add-note="' + item.id + '">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+            ' ' + noteLbl +
+          '</button>' +
+          '<button class="menu-danger" data-remove-id="' + item.id + '">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+            ' Remove' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+  }
+  return (
+    '<div class="parcel-list-item" data-goto-parcel="' + data + '">' +
+      '<div class="parcel-list-info">' +
+        '<div>' + line + '</div>' +
+        '<div style="color:#94a3b8;font-size:11px;">' + area + '</div>' +
+        noteHTML +
+      '</div>' +
+      menuHTML +
+    '</div>'
+  );
+}
+
+function openNoteEditor(parcelId, existingNote) {
+  var container = document.getElementById('listParcels');
+  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
+  if (!item) return;
+  var listItem = item.closest('.parcel-list-item');
+  var info = listItem.querySelector('.parcel-list-info');
+
+  var existing = info.querySelector('.parcel-note-editor');
+  if (existing) return;
+
+  var oldNote = info.querySelector('.parcel-note');
+  if (oldNote) oldNote.style.display = 'none';
+
+  var editor = document.createElement('div');
+  editor.className = 'parcel-note-editor';
+  editor.innerHTML =
+    '<textarea class="parcel-note-input" placeholder="Add a note..." rows="2">' + escapeHTML(existingNote || '') + '</textarea>' +
+    '<div class="parcel-note-editor-actions">' +
+      '<button class="note-save-btn" data-save-note="' + parcelId + '">Save</button>' +
+      '<button class="note-cancel-btn" data-cancel-note="' + parcelId + '">Cancel</button>' +
+    '</div>';
+  info.appendChild(editor);
+
+  var textarea = editor.querySelector('textarea');
+  textarea.addEventListener('click', function(ev) { ev.stopPropagation(); });
+  textarea.focus();
+}
+
+async function saveNote(parcelId) {
+  var container = document.getElementById('listParcels');
+  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
+  if (!item) return;
+  var listItem = item.closest('.parcel-list-item');
+  var editor = listItem.querySelector('.parcel-note-editor');
+  if (!editor) return;
+
+  var noteText = editor.querySelector('textarea').value.trim();
+  try {
+    var res = await authFetch(API_BASE + '/parcels/' + encodeURIComponent(parcelId), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: noteText })
+    });
+    if (!res.ok) throw new Error('failed to save note');
+
+    var p = currentListParcels.find(function(x) { return x.id === parcelId; });
+    if (p) p.note = noteText || null;
+
+    editor.remove();
+
+    var info = listItem.querySelector('.parcel-list-info');
+    var oldNote = info.querySelector('.parcel-note');
+    var dropdownNoteBtn = listItem.querySelector('[data-add-note="' + parcelId + '"]');
+
+    if (noteText) {
+      if (oldNote) {
+        oldNote.querySelector('.parcel-note-text').textContent = noteText;
+        oldNote.style.display = '';
+      } else {
+        var noteDiv = document.createElement('div');
+        noteDiv.className = 'parcel-note';
+        noteDiv.setAttribute('data-note-id', parcelId);
+        noteDiv.innerHTML = '<span class="parcel-note-text">' + escapeHTML(noteText) + '</span>';
+        info.appendChild(noteDiv);
+      }
+      if (dropdownNoteBtn) dropdownNoteBtn.lastChild.textContent = ' Edit Note';
+    } else {
+      if (oldNote) oldNote.remove();
+      if (dropdownNoteBtn) dropdownNoteBtn.lastChild.textContent = ' Add Note';
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function cancelNoteEditor(parcelId) {
+  var container = document.getElementById('listParcels');
+  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
+  if (!item) return;
+  var listItem = item.closest('.parcel-list-item');
+  var editor = listItem.querySelector('.parcel-note-editor');
+  if (editor) editor.remove();
+
+  var info = listItem.querySelector('.parcel-list-info');
+  var oldNote = info.querySelector('.parcel-note');
+  if (oldNote) oldNote.style.display = '';
+}
+
+function closeAllParcelMenus() {
+  document.querySelectorAll('.parcel-menu-dropdown').forEach(function(d) {
+    d.classList.add('hidden');
+  });
+}
+
 document.getElementById('listParcels').addEventListener('click', async function(e) {
+  var menuBtn = e.target.closest('[data-parcel-menu]');
+  if (menuBtn) {
+    e.stopPropagation();
+    var pid = menuBtn.getAttribute('data-parcel-menu');
+    var dropdown = document.querySelector('[data-parcel-dropdown="' + pid + '"]');
+    var wasHidden = dropdown.classList.contains('hidden');
+    closeAllParcelMenus();
+    if (wasHidden) dropdown.classList.remove('hidden');
+    return;
+  }
+
+  var saveBtn = e.target.closest('[data-save-note]');
+  if (saveBtn) {
+    e.stopPropagation();
+    saveNote(saveBtn.getAttribute('data-save-note'));
+    return;
+  }
+
+  var cancelBtn = e.target.closest('[data-cancel-note]');
+  if (cancelBtn) {
+    e.stopPropagation();
+    cancelNoteEditor(cancelBtn.getAttribute('data-cancel-note'));
+    return;
+  }
+
+  var addNoteBtn = e.target.closest('[data-add-note]');
+  if (addNoteBtn) {
+    e.stopPropagation();
+    closeAllParcelMenus();
+    var noteId = addNoteBtn.getAttribute('data-add-note');
+    var p = currentListParcels.find(function(x) { return x.id === noteId; });
+    openNoteEditor(noteId, p ? p.note || '' : '');
+    return;
+  }
+
+  var noteEl = e.target.closest('[data-note-id]');
+  if (noteEl) {
+    e.stopPropagation();
+    return;
+  }
+
   var removeBtn = e.target.closest('[data-remove-id]');
   if (removeBtn) {
     e.stopPropagation();
+    closeAllParcelMenus();
+    if (!confirm('Remove this parcel from the list?')) return;
     var id = removeBtn.getAttribute('data-remove-id');
     try {
       var res = await authFetch(API_BASE + '/parcels/' + encodeURIComponent(id), {
@@ -192,6 +422,7 @@ document.getElementById('listParcels').addEventListener('click', async function(
 
 document.getElementById('backToLists').addEventListener('click', function() {
   currentListId = null;
+  currentListRole = null;
   currentListParcels = [];
   clearListParcels();
   history.replaceState(null, '', window.location.pathname);
@@ -274,7 +505,11 @@ document.getElementById('deleteListBtn').addEventListener('click', async functio
   switchTab('list');
 });
 
-// --- Share list ---
+// --- Share modal (Google Maps style: view link + edit link) ---
+
+var shareViewURL = '';
+var shareEditURL = '';
+
 document.getElementById('shareListBtn').addEventListener('click', function(e) {
   e.stopPropagation();
   e.preventDefault();
@@ -282,34 +517,43 @@ document.getElementById('shareListBtn').addEventListener('click', function(e) {
   openShareModal();
 });
 
-function openShareModal() {
+function buildShareURL(token) {
+  return window.location.origin + window.location.pathname + '?share=' + token;
+}
+
+async function openShareModal() {
   if (!currentListId) return;
   var list = userLists.find(function(l) { return l.id === currentListId; });
   if (!list) return;
-  var toggle = document.getElementById('sharePublicToggle');
-  var linkSection = document.getElementById('shareLinkSection');
-  var linkInput = document.getElementById('shareLinkInput');
-  var copiedMsg = document.getElementById('shareCopied');
 
-  toggle.checked = list.visibility === 'public';
-  copiedMsg.classList.add('hidden');
+  document.getElementById('shareModalTitle').textContent = 'Share "' + list.name + '"';
+  document.getElementById('shareLinksLoading').style.display = '';
+  document.getElementById('shareLinksContent').classList.add('hidden');
+  document.getElementById('shareCopiedMsg').classList.add('hidden');
+  document.getElementById('shareModal').classList.remove('hidden');
 
-  if (list.visibility === 'public' && list.share_token) {
-    linkInput.value = buildShareURL(list.share_token);
-    linkSection.classList.remove('hidden');
-  } else {
-    linkSection.classList.add('hidden');
+  try {
+    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(currentListId) + '/share-links', {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error('failed');
+    var data = await res.json();
+    shareViewURL = buildShareURL(data.share_token);
+    shareEditURL = buildShareURL(data.edit_token);
+
+    list.share_token = data.share_token;
+    list.edit_token = data.edit_token;
+    renderLists();
+  } catch (err) {
+    console.error(err);
   }
 
-  document.getElementById('shareModal').classList.remove('hidden');
+  document.getElementById('shareLinksLoading').style.display = 'none';
+  document.getElementById('shareLinksContent').classList.remove('hidden');
 }
 
 function closeShareModal() {
   document.getElementById('shareModal').classList.add('hidden');
-}
-
-function buildShareURL(token) {
-  return window.location.origin + window.location.pathname + '?share=' + token;
 }
 
 document.getElementById('shareModalClose').addEventListener('click', closeShareModal);
@@ -317,94 +561,75 @@ document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
 });
 
-document.getElementById('sharePublicToggle').addEventListener('change', async function() {
-  var newVis = this.checked ? 'public' : 'private';
-  var linkSection = document.getElementById('shareLinkSection');
-  var linkInput = document.getElementById('shareLinkInput');
-  document.getElementById('shareCopied').classList.add('hidden');
+function showCopiedMsg() {
+  var msg = document.getElementById('shareCopiedMsg');
+  msg.classList.remove('hidden');
+  setTimeout(function() { msg.classList.add('hidden'); }, 2000);
+}
 
+document.getElementById('copyViewLink').addEventListener('click', function() {
+  navigator.clipboard.writeText(shareViewURL).then(showCopiedMsg);
+});
+
+document.getElementById('copyEditLink').addEventListener('click', function() {
+  navigator.clipboard.writeText(shareEditURL).then(showCopiedMsg);
+});
+
+// --- Join shared list (requires auth) ---
+
+async function joinSharedList(token) {
   try {
-    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(currentListId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visibility: newVis })
+    var res = await authFetch(API_BASE + '/shared/' + encodeURIComponent(token) + '/join', {
+      method: 'POST'
     });
-    if (!res.ok) throw new Error('Failed to update');
-    var updated = await res.json();
-
-    var list = userLists.find(function(l) { return l.id === currentListId; });
-    if (list) {
-      list.visibility = updated.visibility;
-      list.share_token = updated.share_token;
-    }
-
-    if (updated.visibility === 'public' && updated.share_token) {
-      linkInput.value = buildShareURL(updated.share_token);
-      linkSection.classList.remove('hidden');
-    } else {
-      linkSection.classList.add('hidden');
-    }
-    renderLists();
-  } catch (err) {
-    console.error(err);
-    this.checked = !this.checked;
-  }
-});
-
-document.getElementById('shareCopyBtn').addEventListener('click', function() {
-  var linkInput = document.getElementById('shareLinkInput');
-  navigator.clipboard.writeText(linkInput.value).then(function() {
-    var msg = document.getElementById('shareCopied');
-    msg.classList.remove('hidden');
-    setTimeout(function() { msg.classList.add('hidden'); }, 2000);
-  });
-});
-
-// --- Load shared list from URL ---
-async function loadSharedList(token) {
-  var apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8788/api' : 'https://geoktimonas-api.hello-118.workers.dev/api';
-  try {
-    var res = await fetch(apiBase + '/shared/' + encodeURIComponent(token));
-    if (!res.ok) throw new Error('not found');
+    if (!res.ok) throw new Error('Failed to join');
     var data = await res.json();
 
-    document.getElementById('sharedListTitle').textContent = data.name;
-    var container = document.getElementById('sharedListParcels');
-    var emptyEl = document.getElementById('sharedListEmpty');
+    history.replaceState(null, '', window.location.pathname);
 
-    if (!data.parcels || !data.parcels.length) {
-      container.innerHTML = '';
-      emptyEl.style.display = 'block';
+    await loadLists();
+    openListParcels(data.list_id, data.role);
+
+    if (isMobile()) {
+      document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+      var savedBtn = document.querySelector('.bottom-tab[data-tab="list"]');
+      if (savedBtn) savedBtn.classList.add('active');
     } else {
-      emptyEl.style.display = 'none';
-      container.innerHTML = data.parcels.map(function(item) {
-        var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
-        var area = item.municipality || item.district || '\u2014';
-        var parcelData = encodeURIComponent(JSON.stringify({
-          sheet: item.sheet, plan_nbr: item.plan_nbr,
-          parcel_nbr: item.parcel_nbr, dist_code: item.dist_code
-        }));
-        return (
-          '<div class="shared-parcel-item" data-goto-parcel="' + parcelData + '">' +
-            '<div>' + line + '</div>' +
-            '<div style="color:#94a3b8;font-size:11px;">' + area + '</div>' +
-          '</div>'
-        );
-      }).join('');
+      document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+      var savedRail = document.querySelector('.rail-btn[data-tab="list"]');
+      if (savedRail) savedRail.classList.add('active');
     }
-
-    switchTab('sharedList');
     openSidebar();
   } catch (err) {
-    console.error('Failed to load shared list:', err);
+    console.error('Failed to join shared list:', err);
   }
 }
 
-document.getElementById('sharedListParcels').addEventListener('click', function(e) {
-  var item = e.target.closest('[data-goto-parcel]');
-  if (item) {
-    var parcelData = JSON.parse(decodeURIComponent(item.getAttribute('data-goto-parcel')));
-    _skipTabSwitch = true;
-    navigateToParcel(parcelData.sheet, parcelData.plan_nbr, parcelData.parcel_nbr, parcelData.dist_code);
+function loadSharedList(token) {
+  if (authUser && authToken) {
+    joinSharedList(token);
+  } else {
+    pendingShareToken = token;
+    sessionStorage.setItem('pending_share_token', token);
+    switchTab('list');
+    if (isMobile()) {
+      document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+      var savedBtn = document.querySelector('.bottom-tab[data-tab="list"]');
+      if (savedBtn) savedBtn.classList.add('active');
+    } else {
+      document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+      var savedRail = document.querySelector('.rail-btn[data-tab="list"]');
+      if (savedRail) savedRail.classList.add('active');
+    }
+    openSidebar();
   }
-});
+}
+
+function processPendingShareToken() {
+  var token = pendingShareToken || sessionStorage.getItem('pending_share_token');
+  if (token) {
+    pendingShareToken = null;
+    sessionStorage.removeItem('pending_share_token');
+    joinSharedList(token);
+  }
+}

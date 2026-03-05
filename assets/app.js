@@ -61,9 +61,10 @@ function openSearchPanel() {
 document.querySelectorAll('.bottom-tab').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var tab = this.getAttribute('data-tab');
+    var effectiveTab = (tab === 'search' && currentParcel) ? 'details' : tab;
     var isOpen = !sidebar.classList.contains('hidden');
     var currentTab = document.querySelector('.sidebar-view.active');
-    var targetId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    var targetId = 'view' + effectiveTab.charAt(0).toUpperCase() + effectiveTab.slice(1);
     var alreadyShowing = isOpen && currentTab && currentTab.id === targetId;
 
     if (alreadyShowing) {
@@ -72,7 +73,7 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
     }
 
     if (tab === 'list') doClear();
-    switchTab(tab);
+    switchTab(effectiveTab);
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
     if (!isOpen) openSidebar();
@@ -83,9 +84,10 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
 document.querySelectorAll('.rail-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var tab = this.getAttribute('data-tab');
+    var effectiveTab = (tab === 'search' && currentParcel) ? 'details' : tab;
     var isOpen = !sidebar.classList.contains('hidden');
     var currentTab = document.querySelector('.sidebar-view.active');
-    var targetId = 'view' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    var targetId = 'view' + effectiveTab.charAt(0).toUpperCase() + effectiveTab.slice(1);
     var alreadyShowing = isOpen && currentTab && currentTab.id === targetId;
 
     if (alreadyShowing) {
@@ -94,7 +96,7 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
     }
 
     if (tab === 'list') doClear();
-    switchTab(tab);
+    switchTab(effectiveTab);
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
     this.classList.add('active');
     if (!isOpen) openSidebar();
@@ -175,9 +177,14 @@ document.addEventListener('click', function(e) {
 
 // --- Init ---
 restoreSession();
-if (authUser) {
+
+var params = new URLSearchParams(window.location.search);
+var shareToken = params.get('share');
+
+if (shareToken) {
+  loadSharedList(shareToken);
+} else if (authUser) {
   loadLists().then(function() {
-    var params = new URLSearchParams(window.location.search);
     var listParam = params.get('list');
     if (listParam) {
       openListParcels(listParam).then(function() {
@@ -208,12 +215,3 @@ map.on('moveend', function() {
 });
 
 loadFromURL();
-
-// Check for shared list in URL
-(function() {
-  var params = new URLSearchParams(window.location.search);
-  var shareToken = params.get('share');
-  if (shareToken) {
-    loadSharedList(shareToken);
-  }
-})();

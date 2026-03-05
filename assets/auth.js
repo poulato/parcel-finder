@@ -41,7 +41,11 @@ function onSignIn(response) {
   localStorage.setItem('geo_auth_token', authToken);
   localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
   updateAuthUI();
-  loadLists();
+  loadLists().then(function() {
+    if (typeof processPendingShareToken === 'function') {
+      processPendingShareToken();
+    }
+  });
   if (currentParcel) checkParcelSaved();
 }
 

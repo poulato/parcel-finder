@@ -30,11 +30,13 @@ function updateSaveButton() {
 
 function renderSavePanel() {
   var picker = document.getElementById('saveListPicker');
-  if (!userLists.length) {
+  var allLists = userLists.length || sharedLists.length;
+  if (!allLists) {
     picker.innerHTML = '<div style="color:#64748b; font-size:12px; margin-bottom:8px;">No lists yet. Create one below.</div>';
     return;
   }
-  picker.innerHTML = userLists.map(function(list) {
+
+  function renderItem(list, canToggle) {
     var isSaved = parcelSavedLists.indexOf(list.id) !== -1;
     var icon = isSaved
       ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>'
@@ -42,14 +44,36 @@ function renderSavePanel() {
     var check = isSaved
       ? '<svg class="save-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5a0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
       : '';
+    var cls = 'save-list-item' + (isSaved ? ' saved' : '') + (!canToggle ? ' save-list-readonly' : '');
+    var attr = canToggle ? ' data-save-to="' + list.id + '"' : '';
     return (
-      '<div class="save-list-item' + (isSaved ? ' saved' : '') + '" data-save-to="' + list.id + '">' +
+      '<div class="' + cls + '"' + attr + '>' +
         icon +
-        '<span class="save-list-name">' + list.name + '</span>' +
+        '<span class="save-list-name">' + escapeHTML(list.name) + '</span>' +
         check +
       '</div>'
     );
+  }
+
+  var html = userLists.map(function(list) {
+    return renderItem(list, true);
   }).join('');
+
+  if (sharedLists.length) {
+    var relevantShared = sharedLists.filter(function(list) {
+      var isSaved = parcelSavedLists.indexOf(list.id) !== -1;
+      return isSaved || list.role === 'editor';
+    });
+    if (relevantShared.length) {
+      html += '<div style="font-size:11px;color:#64748b;margin:10px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Shared with me</div>';
+      html += relevantShared.map(function(list) {
+        var canToggle = list.role === 'editor';
+        return renderItem(list, canToggle);
+      }).join('');
+    }
+  }
+
+  picker.innerHTML = html;
 }
 
 async function openSavePanel() {

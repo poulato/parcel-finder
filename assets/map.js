@@ -294,7 +294,8 @@ function showAllListParcels(parcels) {
     }
     if (currentListId) {
       history.replaceState(null, '', '?list=' + encodeURIComponent(currentListId));
-      var list = userLists.find(function(l) { return l.id === currentListId; });
+      var list = userLists.find(function(l) { return l.id === currentListId; })
+        || sharedLists.find(function(l) { return l.id === currentListId; });
       var searchBarEl = document.getElementById('searchBar');
       var searchBarTextEl = document.getElementById('searchBarText');
       if (list && searchBarEl && searchBarTextEl) {

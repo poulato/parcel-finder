@@ -8,7 +8,7 @@ function json(data, status = 200) {
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
@@ -81,6 +81,24 @@ async function getAuthUser(request, env) {
   }
 }
 
+function generateToken() {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+async function getListAccess(env, listId, user) {
+  if (!user) return null;
+  const list = await env.DB.prepare(
+    `SELECT id, user_id, name FROM lists WHERE id = ?`
+  ).bind(listId).first();
+  if (!list) return null;
+  if (list.user_id === user.id) return { list, role: "owner" };
+  const share = await env.DB.prepare(
+    `SELECT role FROM list_shares WHERE list_id = ? AND LOWER(email) = LOWER(?)`
+  ).bind(listId, user.email).first();
+  if (share) return { list, role: share.role };
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -106,8 +124,8 @@ export default {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
 
-      const { results } = await env.DB.prepare(
-        `SELECT l.id, l.name, l.visibility, l.share_token, l.created_at, COUNT(p.id) as parcel_count
+      const { results: owned } = await env.DB.prepare(
+        `SELECT l.id, l.name, l.visibility, l.share_token, l.edit_token, l.created_at, COUNT(p.id) as parcel_count
          FROM lists l
          LEFT JOIN saved_parcels p ON p.list_id = l.id
          WHERE l.user_id = ?
@@ -115,7 +133,20 @@ export default {
          ORDER BY datetime(l.created_at) DESC`
       ).bind(user.id).all();
 
-      return json(results || []);
+      const { results: shared } = await env.DB.prepare(
+        `SELECT l.id, l.name, l.created_at, s.role, COUNT(p.id) as parcel_count
+         FROM list_shares s
+         JOIN lists l ON l.id = s.list_id
+         LEFT JOIN saved_parcels p ON p.list_id = l.id
+         WHERE LOWER(s.email) = LOWER(?)
+         GROUP BY l.id
+         ORDER BY datetime(l.created_at) DESC`
+      ).bind(user.email).all();
+
+      return json({
+        owned: owned || [],
+        shared: (shared || []).map(s => ({ ...s, is_shared: true }))
+      });
     }
 
     if (path === "/api/lists" && request.method === "POST") {
@@ -137,14 +168,13 @@ export default {
       return json(results?.[0] || { id, name: body.name.trim() }, 201);
     }
 
-    if (path.startsWith("/api/lists/") && !path.includes("/parcels") && request.method === "DELETE") {
+    if (path.startsWith("/api/lists/") && !path.includes("/parcels") && !path.includes("/share") && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const listId = decodeURIComponent(path.replace("/api/lists/", ""));
       if (!listId) return json({ error: "list id is required" }, 400);
 
-      // Delete parcels in the list first, then the list
       await env.DB.prepare(
         `DELETE FROM saved_parcels WHERE list_id = ? AND user_id = ?`
       ).bind(listId, user.id).run();
@@ -162,6 +192,9 @@ export default {
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const listId = decodeURIComponent(path.split("/")[3]);
+      const access = await getListAccess(env, listId, user);
+      if (!access || access.role !== "owner") return json({ error: "Not authorized" }, 403);
+
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid body" }, 400);
 
@@ -173,65 +206,91 @@ export default {
         binds.push(body.name.trim());
       }
 
-      if (body.visibility !== undefined) {
-        const allowed = ["private", "public"];
-        if (!allowed.includes(body.visibility)) {
-          return json({ error: "visibility must be private or public" }, 400);
-        }
-        updates.push("visibility = ?");
-        binds.push(body.visibility);
-
-        if (body.visibility === "public") {
-          const existing = await env.DB.prepare(
-            `SELECT share_token FROM lists WHERE id = ? AND user_id = ?`
-          ).bind(listId, user.id).first();
-          if (existing && !existing.share_token) {
-            const token = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-            updates.push("share_token = ?");
-            binds.push(token);
-          }
-        } else if (body.visibility === "private") {
-          updates.push("share_token = NULL");
-        }
-      }
-
       if (!updates.length) return json({ error: "Nothing to update" }, 400);
 
-      binds.push(listId, user.id);
+      binds.push(listId);
       const { meta } = await env.DB.prepare(
-        `UPDATE lists SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`
+        `UPDATE lists SET ${updates.join(", ")} WHERE id = ?`
       ).bind(...binds).run();
 
       if (!meta || !meta.changes) return json({ error: "List not found" }, 404);
 
       const updated = await env.DB.prepare(
-        `SELECT id, name, visibility, share_token FROM lists WHERE id = ?`
+        `SELECT id, name, visibility, share_token, edit_token FROM lists WHERE id = ?`
       ).bind(listId).first();
       return json(updated || { ok: true });
     }
 
-    // --- Shared / Public lists ---
+    // --- Share links (generate view + edit tokens) ---
 
-    if (path.match(/^\/api\/shared\/[^/]+$/) && request.method === "GET") {
-      const token = decodeURIComponent(path.split("/")[3]);
+    if (path.match(/^\/api\/lists\/[^/]+\/share-links$/) && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
       const list = await env.DB.prepare(
-        `SELECT l.id, l.name, l.visibility, l.user_id FROM lists l WHERE l.share_token = ? AND l.visibility = 'public'`
+        `SELECT id, share_token, edit_token FROM lists WHERE id = ? AND user_id = ?`
+      ).bind(listId, user.id).first();
+      if (!list) return json({ error: "List not found" }, 404);
+
+      const shareToken = list.share_token || generateToken();
+      const editToken = list.edit_token || generateToken();
+
+      if (!list.share_token || !list.edit_token) {
+        await env.DB.prepare(
+          `UPDATE lists SET share_token = ?, edit_token = ?, visibility = 'public' WHERE id = ?`
+        ).bind(shareToken, editToken, listId).run();
+      }
+
+      return json({ share_token: shareToken, edit_token: editToken });
+    }
+
+    // --- Join shared list (requires auth, auto-saves to user's lists) ---
+
+    if (path.match(/^\/api\/shared\/[^/]+\/join$/) && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const token = decodeURIComponent(path.split("/")[3]);
+
+      let list = await env.DB.prepare(
+        `SELECT id, name, user_id FROM lists WHERE share_token = ?`
       ).bind(token).first();
+      let role = "viewer";
 
-      if (!list) return json({ error: "List not found or not public" }, 404);
+      if (!list) {
+        list = await env.DB.prepare(
+          `SELECT id, name, user_id FROM lists WHERE edit_token = ?`
+        ).bind(token).first();
+        role = "editor";
+      }
 
-      const { results: parcels } = await env.DB.prepare(
-        `SELECT id, sheet, plan_nbr, parcel_nbr, dist_code, district, municipality,
-                planning_zone, planning_zone_desc, block_code, created_at
-         FROM saved_parcels WHERE list_id = ?
-         ORDER BY datetime(created_at) DESC`
-      ).bind(list.id).all();
+      if (!list) return json({ error: "List not found" }, 404);
 
-      return json({
-        id: list.id,
-        name: list.name,
-        parcels: parcels || []
-      });
+      if (list.user_id === user.id) {
+        return json({ list_id: list.id, role: "owner", name: list.name });
+      }
+
+      const existing = await env.DB.prepare(
+        `SELECT id, role FROM list_shares WHERE list_id = ? AND LOWER(email) = LOWER(?)`
+      ).bind(list.id, user.email).first();
+
+      if (existing) {
+        if (role === "editor" && existing.role === "viewer") {
+          await env.DB.prepare(
+            `UPDATE list_shares SET role = 'editor' WHERE id = ?`
+          ).bind(existing.id).run();
+        } else {
+          role = existing.role;
+        }
+      } else {
+        const id = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT INTO list_shares (id, list_id, email, role) VALUES (?, ?, ?, ?)`
+        ).bind(id, list.id, user.email.toLowerCase(), role).run();
+      }
+
+      return json({ list_id: list.id, role, name: list.name });
     }
 
     // --- Parcels ---
@@ -241,15 +300,17 @@ export default {
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const listId = decodeURIComponent(path.split("/")[3]);
+      const access = await getListAccess(env, listId, user);
+      if (!access) return json({ error: "Not authorized" }, 403);
 
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, planning_zone, planning_zone_desc,
-                block_code, created_at
+                block_code, note, created_at
          FROM saved_parcels
-         WHERE list_id = ? AND user_id = ?
+         WHERE list_id = ?
          ORDER BY datetime(created_at) DESC`
-      ).bind(listId, user.id).all();
+      ).bind(listId).all();
 
       return json(results || []);
     }
@@ -259,6 +320,11 @@ export default {
       if (!user) return json({ error: "Authentication required" }, 401);
 
       const listId = decodeURIComponent(path.split("/")[3]);
+      const access = await getListAccess(env, listId, user);
+      if (!access || (access.role !== "owner" && access.role !== "editor")) {
+        return json({ error: "Not authorized" }, 403);
+      }
+
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid JSON body" }, 400);
       if (!body.sheet || !body.plan_nbr || !body.parcel_nbr) {
@@ -273,7 +339,7 @@ export default {
             district, municipality, planning_zone, planning_zone_desc, block_code
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
-          id, user.id, listId,
+          id, access.list.user_id, listId,
           body.sheet, body.plan_nbr, body.parcel_nbr,
           body.dist_code ?? null, body.district ?? null,
           body.municipality ?? null, body.planning_zone ?? null,
@@ -311,14 +377,44 @@ export default {
 
       const { results } = await env.DB.prepare(
         `SELECT DISTINCT p.list_id FROM saved_parcels p
-         WHERE p.user_id = ?
+         JOIN lists l ON l.id = p.list_id
+         LEFT JOIN list_shares s ON s.list_id = l.id AND LOWER(s.email) = LOWER(?)
+         WHERE (l.user_id = ? OR s.id IS NOT NULL)
          AND REPLACE(p.sheet, '.0', '') = ?
          AND REPLACE(p.plan_nbr, '.0', '') = ?
          AND REPLACE(p.parcel_nbr, '.0', '') = ?
          AND IFNULL(p.dist_code, -1) = ?`
-      ).bind(user.id, norm(sheet), norm(plan), norm(parcel), distVal).all();
+      ).bind(user.email, user.id, norm(sheet), norm(plan), norm(parcel), distVal).all();
 
       return json((results || []).map(r => r.list_id));
+    }
+
+    if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "PATCH") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const id = decodeURIComponent(path.replace("/api/parcels/", ""));
+      const body = await request.json().catch(() => null);
+      if (!body) return json({ error: "Invalid body" }, 400);
+
+      const note = body.note !== undefined ? (body.note || null) : undefined;
+      if (note === undefined) return json({ error: "Nothing to update" }, 400);
+
+      const parcel = await env.DB.prepare(
+        `SELECT list_id FROM saved_parcels WHERE id = ?`
+      ).bind(id).first();
+      if (!parcel) return json({ error: "Parcel not found" }, 404);
+
+      const access = await getListAccess(env, parcel.list_id, user);
+      if (!access || (access.role !== "owner" && access.role !== "editor")) {
+        return json({ error: "Not authorized" }, 403);
+      }
+
+      await env.DB.prepare(
+        `UPDATE saved_parcels SET note = ? WHERE id = ?`
+      ).bind(note, id).run();
+
+      return json({ ok: true, note });
     }
 
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "DELETE") {
@@ -328,11 +424,20 @@ export default {
       const id = decodeURIComponent(path.replace("/api/parcels/", ""));
       if (!id) return json({ error: "id is required" }, 400);
 
-      const { meta } = await env.DB.prepare(
-        `DELETE FROM saved_parcels WHERE id = ? AND user_id = ?`
-      ).bind(id, user.id).run();
+      const parcel = await env.DB.prepare(
+        `SELECT list_id FROM saved_parcels WHERE id = ?`
+      ).bind(id).first();
+      if (!parcel) return json({ error: "Parcel not found" }, 404);
 
-      if (!meta || !meta.changes) return json({ error: "Parcel not found" }, 404);
+      const access = await getListAccess(env, parcel.list_id, user);
+      if (!access || (access.role !== "owner" && access.role !== "editor")) {
+        return json({ error: "Not authorized" }, 403);
+      }
+
+      await env.DB.prepare(
+        `DELETE FROM saved_parcels WHERE id = ?`
+      ).bind(id).run();
+
       return json({ ok: true });
     }
 
