@@ -76,16 +76,19 @@ function enrich(lat, lng) {
   return Promise.all([
     spatialLookup(12, 'PLNZNT_NAME,PLNZNT_DESC', lat, lng),
     spatialLookup(16, 'VIL_NM_E', lat, lng),
-    spatialLookup(15, 'DIST_NM_E', lat, lng)
+    spatialLookup(15, 'DIST_NM_E', lat, lng),
+    spatialLookup(13, 'POST_CODE', lat, lng)
   ]).then(function(results) {
     var zone = results[0].features && results[0].features[0] ? results[0].features[0].attributes : {};
     var muni = results[1].features && results[1].features[0] ? results[1].features[0].attributes : {};
     var dist = results[2].features && results[2].features[0] ? results[2].features[0].attributes : {};
+    var post = results[3].features && results[3].features[0] ? results[3].features[0].attributes : {};
     return {
       planning_zone: zone.PLNZNT_NAME || '\u2014',
       planning_zone_desc: zone.PLNZNT_DESC || '\u2014',
       municipality: muni.VIL_NM_E || '\u2014',
-      district: dist.DIST_NM_E || '\u2014'
+      district: dist.DIST_NM_E || '\u2014',
+      postal_code: post.POST_CODE ? String(Math.round(post.POST_CODE)) : '\u2014'
     };
   });
 }
@@ -120,6 +123,7 @@ function buildParcelHTML(attrs, extra) {
   return '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
     '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
+    '<div><span class="label">Postal Code:</span> <span class="value">' + extra.postal_code + '</span></div>' +
     '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
     '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '\u2014') + '</span></div>' +
     '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
@@ -142,7 +146,8 @@ function showParcel(feature, extra) {
     municipality: extra.municipality || '',
     planning_zone: extra.planning_zone || '',
     planning_zone_desc: extra.planning_zone_desc || '',
-    block_code: attrs.BLCK_CODE || ''
+    block_code: attrs.BLCK_CODE || '',
+    postal_code: extra.postal_code || ''
   };
   var rings = feature.geometry.rings;
   var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
