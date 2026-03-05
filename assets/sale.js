@@ -376,6 +376,7 @@ function openSaleOverlay() {
 
 function closeSaleOverlay() {
   document.getElementById('saleModal').classList.add('hidden');
+  document.getElementById('saleOverlayFooter').innerHTML = '';
 }
 
 document.getElementById('saleOverlayClose').addEventListener('click', closeSaleOverlay);
@@ -437,9 +438,12 @@ function showSaleForm(existingListing) {
           '<input type="file" id="photoFile" accept="image/*" style="display:none;" />' +
         '</div>' +
       '</div>' +
-      '<button id="saleSubmitBtn" class="sale-submit-btn">' + (isEdit ? 'Update Listing' : 'List for Sale') + '</button>' +
-      (isEdit ? '<button id="saleRemoveBtn" class="sale-remove-btn">Remove Listing</button>' : '') +
     '</div>';
+
+  var footer = document.getElementById('saleOverlayFooter');
+  footer.innerHTML =
+    '<button id="saleSubmitBtn" class="sale-submit-btn">' + (isEdit ? 'Update Listing' : 'List for Sale') + '</button>' +
+    (isEdit ? '<button id="saleRemoveBtn" class="sale-remove-btn">Remove Listing</button>' : '');
 
   var certUploadState = { key: listing.certificate_key || null };
   var photoKeysState = existingPhotos.slice();

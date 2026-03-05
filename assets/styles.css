@@ -1291,6 +1291,7 @@ body {
 .sale-modal-card .save-overlay-header button {
   font-size: 24px;
 }
+#saleOverlayFooter:empty { display: none; }
 @media(max-width:700px){
   .sale-modal-card {
     max-width: none;
@@ -1310,27 +1311,21 @@ body {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 0 16px;
+    padding: 0 16px 16px;
   }
-  .sale-modal-card .sale-form {
-    padding-bottom: 0;
-  }
-  .sale-modal-card .sale-submit-btn,
-  .sale-modal-card .sale-remove-btn {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    border-radius: 0;
-    margin: 0;
+  .sale-modal-card #saleOverlayFooter {
     flex-shrink: 0;
   }
-  .sale-modal-card .sale-submit-btn {
+  .sale-modal-card #saleOverlayFooter .sale-submit-btn {
+    border-radius: 0;
     padding: 16px;
     font-size: 16px;
+    margin: 0;
   }
-  .sale-modal-card .sale-remove-btn {
-    padding: 14px;
+  .sale-modal-card #saleOverlayFooter .sale-remove-btn {
     border-radius: 0;
+    padding: 14px;
+    margin: 0;
     border-left: none;
     border-right: none;
     border-bottom: none;
