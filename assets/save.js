@@ -82,11 +82,11 @@ async function openSavePanel() {
   var title = document.querySelector('.save-panel-title');
   title.textContent = parcelSavedLists.length > 0 ? 'Saved in your lists' : 'Save to list';
   renderSavePanel();
-  document.getElementById('saveOverlay').classList.remove('hidden');
+  document.getElementById('saveModal').classList.remove('hidden');
 }
 
 function closeSavePanel() {
-  document.getElementById('saveOverlay').classList.add('hidden');
+  document.getElementById('saveModal').classList.add('hidden');
 }
 
 document.getElementById('saveListPicker').addEventListener('click', async function(e) {
@@ -184,4 +184,8 @@ document.getElementById('newListName').addEventListener('keydown', function(e) {
 
 document.getElementById('saveOverlayClose').addEventListener('click', function() {
   closeSavePanel();
+});
+
+document.getElementById('saveModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSavePanel();
 });

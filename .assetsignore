@@ -1,0 +1,12 @@
+.git
+.gitignore
+.assetsignore
+node_modules
+api-worker
+package.json
+package-lock.json
+requirements.txt
+*.md
+*.sql
+serve.json
+.cursor

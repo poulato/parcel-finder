@@ -1,5 +1,25 @@
 var API_BASE = '/api';
 
+// --- App Menu (hamburger) ---
+
+function toggleAppMenu() {
+  var menu = document.getElementById('appMenu');
+  var backdrop = document.getElementById('appMenuBackdrop');
+  if (menu.classList.contains('hidden') || !menu.classList.contains('open')) {
+    menu.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+    requestAnimationFrame(function() { menu.classList.add('open'); });
+  } else {
+    closeAppMenu();
+  }
+}
+function closeAppMenu() {
+  var menu = document.getElementById('appMenu');
+  var backdrop = document.getElementById('appMenuBackdrop');
+  menu.classList.remove('open');
+  setTimeout(function() { menu.classList.add('hidden'); backdrop.classList.add('hidden'); }, 250);
+}
+
 // --- Sidebar & Navigation ---
 
 function switchTab(tabName) {
@@ -224,10 +244,10 @@ map.on('moveend', function() {
 var listingsUrl = '/listings';
 
 document.getElementById('railListBtn').addEventListener('click', function() {
-  window.open(listingsUrl, '_blank');
+  window.location.href = listingsUrl;
 });
 document.getElementById('bottomListBtn').addEventListener('click', function() {
-  window.open(listingsUrl, '_blank');
+  window.location.href = listingsUrl;
 });
 
 loadFromURL();

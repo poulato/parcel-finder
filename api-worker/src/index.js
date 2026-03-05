@@ -96,13 +96,13 @@ function generateToken() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 }
 
-function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function getSiteUrl(url, env) {
-  return url.origin;
-}
+import { sendEmail, welcomeEmail, listingPendingEmail, listingApprovedEmail, listingRejectedEmail } from './emails.js';
+import { esc, getSiteUrl } from './layout.js';
+import { renderListingsPage } from './pages/listings.js';
+import { renderListingDetailPage } from './pages/listing-detail.js';
+import { renderPrivacyPage } from './pages/privacy.js';
+import { renderTermsPage } from './pages/terms.js';
+import { renderSitemap } from './pages/sitemap.js';
 
 function isAdmin(user, env) {
   const adminEmail = env.ADMIN_EMAIL || "hello@truemythgames.com";
@@ -147,6 +147,30 @@ export default {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Not authenticated" }, 401);
       return json(user);
+    }
+
+    // --- User registration (first sign-in tracking + welcome email) ---
+
+    if (path === "/api/auth/register" && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+
+      const existing = await env.DB.prepare(
+        `SELECT id FROM users WHERE id = ?`
+      ).bind(user.id).first();
+
+      if (existing) {
+        return json({ registered: false, message: "Already registered" });
+      }
+
+      await env.DB.prepare(
+        `INSERT INTO users (id, email, name, picture) VALUES (?, ?, ?, ?)`
+      ).bind(user.id, user.email, user.name || null, user.picture || null).run();
+
+      const welcome = welcomeEmail(user.name);
+      sendEmail(env, user.email, welcome.subject, welcome.html);
+
+      return json({ registered: true });
     }
 
     // --- Lists ---
@@ -610,6 +634,12 @@ export default {
       const row = await env.DB.prepare(
         `SELECT * FROM sale_listings WHERE id = ?`
       ).bind(id).first();
+
+      if (!autoApprove) {
+        const pending = listingPendingEmail(body.title || `Parcel ${body.parcel_nbr}`, body.parcel_nbr, body.sheet, body.plan_nbr);
+        sendEmail(env, user.email, pending.subject, pending.html);
+      }
+
       return json(row || { id }, 201);
     }
 
@@ -699,10 +729,29 @@ export default {
         return json({ error: "status must be 'active' or 'rejected'" }, 400);
       }
 
-      const { meta } = await env.DB.prepare(
+      const listing = await env.DB.prepare(
+        `SELECT id, user_id, title, parcel_nbr, sheet, plan_nbr FROM sale_listings WHERE id = ?`
+      ).bind(id).first();
+      if (!listing) return json({ error: "Listing not found" }, 404);
+
+      await env.DB.prepare(
         `UPDATE sale_listings SET status = ? WHERE id = ?`
       ).bind(body.status, id).run();
-      if (!meta || !meta.changes) return json({ error: "Listing not found" }, 404);
+
+      const owner = await env.DB.prepare(
+        `SELECT email, name FROM users WHERE id = ?`
+      ).bind(listing.user_id).first();
+
+      if (owner && owner.email) {
+        const listingTitle = listing.title || `Parcel ${listing.parcel_nbr}`;
+        if (body.status === 'active') {
+          const approved = listingApprovedEmail(owner.name, listingTitle, id);
+          sendEmail(env, owner.email, approved.subject, approved.html);
+        } else if (body.status === 'rejected') {
+          const rejected = listingRejectedEmail(owner.name, listingTitle);
+          sendEmail(env, owner.email, rejected.subject, rejected.html);
+        }
+      }
 
       return json({ ok: true, status: body.status });
     }
@@ -710,136 +759,20 @@ export default {
     // --- SEO: All listings page ---
 
     if (path === "/listings" && request.method === "GET") {
-      const siteUrl = getSiteUrl(url, env);
+      const siteUrl = getSiteUrl(url);
       const apiOrigin = url.origin;
-
       const district = url.searchParams.get("district") || "";
       let sql = `SELECT id, title, price, municipality, district, parcel_nbr, sheet, plan_nbr, dist_code, photo_keys, certificate_key, created_at
                  FROM sale_listings WHERE status = 'active'`;
       const binds = [];
       if (district) { sql += ` AND dist_code = ?`; binds.push(parseInt(district)); }
       sql += ` ORDER BY datetime(created_at) DESC LIMIT 100`;
-
       const stmt = binds.length ? env.DB.prepare(sql).bind(...binds) : env.DB.prepare(sql);
       const { results } = await stmt.all();
-      const listings = results || [];
-
       const districtNames = { 1: "Nicosia", 2: "Famagusta", 3: "Larnaca", 4: "Paphos", 5: "Limassol" };
       const filterLabel = district ? (districtNames[district] || "District " + district) : "All Cyprus";
-
-      const cardsHTML = listings.length ? listings.map(l => {
-        const price = l.price ? `€${Number(l.price).toLocaleString()}` : 'Negotiable';
-        const loc = l.municipality || l.district || '';
-        let photos = [];
-        try { photos = l.photo_keys ? JSON.parse(l.photo_keys) : []; } catch(e) {}
-        const thumb = photos.length ? `<img class="card-thumb" src="${apiOrigin}/api/images/${encodeURIComponent(photos[0])}" alt="${esc(l.title || 'Land')}" loading="lazy"/>` : '<div class="card-thumb card-thumb-empty">🏞️</div>';
-        const cert = l.certificate_key ? '<span class="cert">✓ Verified</span>' : '';
-        return `<a class="card" href="${apiOrigin}/listing/${l.id}">
-${thumb}
-<div class="card-body">
-<div class="card-title">${esc(l.title || 'Land for Sale')}</div>
-<div class="card-price">${price} ${cert}</div>
-<div class="card-loc">📍 ${esc(loc)} · Parcel ${esc(String(l.parcel_nbr))} · ${esc(String(l.sheet))}/${esc(String(l.plan_nbr))}</div>
-</div>
-</a>`;
-      }).join('') : '<p class="empty">No listings found.</p>';
-
-      const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Land for Sale in ${esc(filterLabel)} | Geoktimonas</title>
-<meta name="description" content="Browse ${listings.length} land parcels for sale in ${esc(filterLabel)}. Find prices, locations, photos, and verified certificates on Geoktimonas."/>
-<link rel="canonical" href="${apiOrigin}/listings${district ? '?district=' + district : ''}"/>
-<meta property="og:type" content="website"/>
-<meta property="og:title" content="Land for Sale in ${esc(filterLabel)} | Geoktimonas"/>
-<meta property="og:description" content="Browse ${listings.length} land parcels for sale in ${esc(filterLabel)}."/>
-<meta property="og:url" content="${apiOrigin}/listings"/>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#131c2e;color:#e2e8f0;min-height:100vh}
-.layout{display:flex;min-height:100vh}
-.rail{width:56px;flex-shrink:0;background:#0f172a;border-right:1px solid #1e293b;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px}
-.rail-logo{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px;text-decoration:none}
-.rail-btn{width:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 0;background:none;border:none;border-radius:8px;color:#64748b;font-size:10px;font-weight:600;cursor:pointer;text-decoration:none;transition:color .15s,background .15s}
-.rail-btn:hover{color:#cbd5e1;background:rgba(148,163,184,.1)}
-.rail-btn.active{color:#4a90d9;background:rgba(74,144,217,.1)}
-.rail-icon{width:20px;height:20px}
-.main{flex:1;min-width:0;padding:24px;overflow-y:auto;max-width:800px;background:#131c2e}
-h2{font-size:20px;font-weight:700;margin-bottom:4px;color:#f1f5f9}
-.subtitle{font-size:14px;color:#64748b;margin-bottom:20px}
-.filters{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
-.filter-link{display:inline-block;padding:6px 14px;border-radius:20px;font-size:12px;text-decoration:none;background:transparent;border:1px solid #334155;color:#94a3b8;transition:all .15s;font-weight:500}
-.filter-link:hover{border-color:#4a90d9;color:#e2e8f0}
-.filter-link.active{background:#4a90d9;color:#fff;border-color:#4a90d9}
-.grid{display:flex;flex-direction:column;gap:10px}
-.card{display:flex;gap:0;background:#1a2536;border:1px solid #243044;border-radius:10px;overflow:hidden;text-decoration:none;color:inherit;transition:all .15s}
-.card:hover{border-color:#4a90d9;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
-.card-thumb{width:130px;min-height:110px;object-fit:cover;flex-shrink:0}
-.card-thumb-empty{width:130px;min-height:110px;display:flex;align-items:center;justify-content:center;background:#0f172a;font-size:28px;flex-shrink:0}
-.card-body{padding:14px 16px;min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}
-.card-title{font-size:15px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#f1f5f9}
-.card-price{font-size:15px;color:#4a90d9;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-.card-loc{font-size:12px;color:#94a3b8}
-.cert{font-size:10px;color:#6ee7b7;background:#064e3b;padding:2px 7px;border-radius:10px;font-weight:600}
-.empty{text-align:center;color:#64748b;padding:40px 0}
-.footer{margin-top:40px;padding-top:20px;border-top:1px solid #1e293b;font-size:12px;color:#475569;text-align:center}
-.footer a{color:#4a90d9;text-decoration:none}
-@media(max-width:700px){
-  .rail{display:none}
-  .main{padding:16px}
-  .card-thumb,.card-thumb-empty{width:90px;min-height:80px}
-}
-</style>
-</head>
-<body>
-<div class="layout">
-<nav class="rail">
-<a class="rail-logo" href="${siteUrl}/">🏡</a>
-<a class="rail-btn" href="${siteUrl}/?tab=search">
-<svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-Search
-</a>
-<a class="rail-btn" href="${siteUrl}/?tab=list">
-<svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-Saved
-</a>
-<a class="rail-btn" href="${siteUrl}/?tab=sale">
-<svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-Sale
-</a>
-<a class="rail-btn active" href="${apiOrigin}/listings">
-<svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-List
-</a>
-</nav>
-<div class="main">
-<h2>Land for Sale</h2>
-<p class="subtitle">${listings.length} listing${listings.length !== 1 ? 's' : ''} in ${esc(filterLabel)}</p>
-<div class="filters">
-<a class="filter-link${!district ? ' active' : ''}" href="${apiOrigin}/listings">All</a>
-<a class="filter-link${district === '1' ? ' active' : ''}" href="${apiOrigin}/listings?district=1">Nicosia</a>
-<a class="filter-link${district === '2' ? ' active' : ''}" href="${apiOrigin}/listings?district=2">Famagusta</a>
-<a class="filter-link${district === '3' ? ' active' : ''}" href="${apiOrigin}/listings?district=3">Larnaca</a>
-<a class="filter-link${district === '4' ? ' active' : ''}" href="${apiOrigin}/listings?district=4">Paphos</a>
-<a class="filter-link${district === '5' ? ' active' : ''}" href="${apiOrigin}/listings?district=5">Limassol</a>
-</div>
-<div class="grid">${cardsHTML}</div>
-<div class="footer">
-<p><a href="${siteUrl}/">Geoktimonas</a> – Cyprus parcel finder & marketplace.</p>
-</div>
-</div>
-</div>
-</body>
-</html>`;
-
-      return new Response(html, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "public, max-age=300, s-maxage=3600",
-        },
-      });
+      const html = renderListingsPage(results || [], district, filterLabel, siteUrl, apiOrigin);
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300, s-maxage=3600" } });
     }
 
     // --- SEO: Server-rendered listing page ---
@@ -849,157 +782,33 @@ List
       const listing = await env.DB.prepare(
         `SELECT * FROM sale_listings WHERE id = ? AND status = 'active'`
       ).bind(id).first();
+      if (!listing) return new Response("Listing not found", { status: 404, headers: { "Content-Type": "text/html" } });
+      const html = renderListingDetailPage(listing, id, getSiteUrl(url), url.origin);
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300, s-maxage=3600" } });
+    }
 
-      if (!listing) {
-        return new Response("Listing not found", { status: 404, headers: { "Content-Type": "text/html" } });
-      }
+    // --- Privacy Policy ---
 
-      const siteUrl = getSiteUrl(url, env);
-      const apiOrigin = url.origin;
-      const appUrl = `${siteUrl}/?sheet=${listing.sheet}&plan=${listing.plan_nbr}&parcel=${listing.parcel_nbr}&district=${listing.dist_code || ''}`;
+    if (path === "/privacy" && request.method === "GET") {
+      const html = renderPrivacyPage(getSiteUrl(url), url.origin);
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
+    }
 
-      const title = listing.title || `Land for Sale – Parcel ${listing.parcel_nbr}`;
-      const price = listing.price ? `€${Number(listing.price).toLocaleString()}` : 'Negotiable';
-      const loc = listing.municipality || listing.district || 'Cyprus';
-      const desc = listing.description
-        ? listing.description.substring(0, 200)
-        : `${price} – Land parcel ${listing.parcel_nbr} (${listing.sheet}/${listing.plan_nbr}) in ${loc}, Cyprus.`;
+    // --- Terms of Service ---
 
-      let photos = [];
-      try { photos = listing.photo_keys ? JSON.parse(listing.photo_keys) : []; } catch(e) {}
-      const ogImage = photos.length
-        ? `${apiOrigin}/api/images/${encodeURIComponent(photos[0])}`
-        : '';
-
-      const photosHTML = photos.length
-        ? `<div class="gallery">${photos.map(k =>
-            `<img src="${apiOrigin}/api/images/${encodeURIComponent(k)}" alt="${esc(title)}" loading="lazy" />`
-          ).join('')}</div>`
-        : '';
-
-      const certBadge = listing.certificate_key
-        ? '<span class="badge verified">✓ Certificate Verified</span>'
-        : '';
-
-      const jsonLd = {
-        "@context": "https://schema.org",
-        "@type": "RealEstateListing",
-        "name": title,
-        "description": desc,
-        "url": `${apiOrigin}/listing/${id}`,
-        "datePosted": listing.created_at,
-        ...(listing.price && { "price": listing.price, "priceCurrency": "EUR" }),
-        "address": {
-          "@type": "PostalAddress",
-          "addressLocality": listing.municipality || '',
-          "addressRegion": listing.district || '',
-          "addressCountry": "CY"
-        },
-        ...(ogImage && { "image": ogImage })
-      };
-
-      const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${esc(title)} – ${price} | Geoktimonas</title>
-<meta name="description" content="${esc(desc)}"/>
-<link rel="canonical" href="${apiOrigin}/listing/${id}"/>
-<meta property="og:type" content="website"/>
-<meta property="og:title" content="${esc(title)} – ${price}"/>
-<meta property="og:description" content="${esc(desc)}"/>
-<meta property="og:url" content="${apiOrigin}/listing/${id}"/>
-${ogImage ? `<meta property="og:image" content="${ogImage}"/>` : ''}
-<meta name="twitter:card" content="${ogImage ? 'summary_large_image' : 'summary'}"/>
-<meta name="twitter:title" content="${esc(title)} – ${price}"/>
-<meta name="twitter:description" content="${esc(desc)}"/>
-${ogImage ? `<meta name="twitter:image" content="${ogImage}"/>` : ''}
-<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
-.header{background:#1e293b;border-bottom:1px solid #334155;padding:16px 24px;display:flex;align-items:center;gap:10px}
-.header h1{font-size:18px;font-weight:600}
-.header span{font-size:22px}
-.container{max-width:720px;margin:0 auto;padding:24px 16px}
-.gallery{display:flex;gap:8px;overflow-x:auto;margin-bottom:20px;border-radius:8px}
-.gallery img{height:260px;object-fit:cover;border-radius:8px;flex-shrink:0}
-.title{font-size:22px;font-weight:700;margin-bottom:4px}
-.price{font-size:20px;color:#6b9eff;font-weight:700;margin-bottom:8px}
-.badge{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:4px;margin-bottom:12px}
-.verified{background:#064e3b;color:#6ee7b7}
-.meta{font-size:14px;color:#94a3b8;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px}
-.desc{font-size:15px;line-height:1.6;color:#cbd5e1;margin-bottom:20px}
-.poster{display:flex;align-items:center;gap:10px;font-size:14px;color:#94a3b8;margin-bottom:8px}
-.poster img{width:32px;height:32px;border-radius:50%}
-.contact{font-size:14px;color:#94a3b8;margin-bottom:24px}
-.cta{display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;transition:background .15s}
-.cta:hover{background:#1d4ed8}
-.footer{margin-top:40px;padding-top:20px;border-top:1px solid #1e293b;font-size:12px;color:#475569;text-align:center}
-.footer a{color:#6b9eff;text-decoration:none}
-</style>
-</head>
-<body>
-<div class="header"><span>🏡</span><h1>Geoktimonas</h1></div>
-<div class="container">
-${photosHTML}
-<div class="title">${esc(title)}</div>
-<div class="price">${price}</div>
-${certBadge}
-<div class="meta">
-<span>📍 ${esc(loc)}</span>
-<span>• Parcel ${esc(String(listing.parcel_nbr))} • Sheet ${esc(String(listing.sheet))}/${esc(String(listing.plan_nbr))}</span>
-</div>
-${listing.description ? `<div class="desc">${esc(listing.description)}</div>` : ''}
-<div class="poster">
-${listing.user_picture ? `<img src="${esc(listing.user_picture)}" alt=""/>` : ''}
-<span>${esc(listing.user_name || 'Anonymous')}</span>
-</div>
-<div class="contact">📞 ${esc(listing.contact)}</div>
-<a class="cta" href="${appUrl}">View on Map →</a>
-<div class="footer">
-<p>Land listing on <a href="${siteUrl}">Geoktimonas</a> · <a href="${apiOrigin}/listings">Browse all listings</a></p>
-</div>
-</div>
-</body>
-</html>`;
-
-      return new Response(html, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "public, max-age=300, s-maxage=3600",
-        },
-      });
+    if (path === "/terms" && request.method === "GET") {
+      const html = renderTermsPage(getSiteUrl(url), url.origin);
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
     }
 
     // --- SEO: Sitemap ---
 
     if (path === "/sitemap.xml" && request.method === "GET") {
-      const siteUrl = getSiteUrl(url, env);
-      const apiOrigin = url.origin;
-
       const { results } = await env.DB.prepare(
         `SELECT id, created_at FROM sale_listings WHERE status = 'active' ORDER BY datetime(created_at) DESC LIMIT 1000`
       ).all();
-
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-<url><loc>${siteUrl}/</loc><priority>1.0</priority></url>
-<url><loc>${apiOrigin}/listings</loc><priority>0.9</priority><changefreq>daily</changefreq></url>
-`;
-      for (const r of (results || [])) {
-        const lastmod = r.created_at ? r.created_at.split(' ')[0] : '';
-        xml += `<url><loc>${apiOrigin}/listing/${r.id}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq></url>\n`;
-      }
-      xml += `</urlset>`;
-
-      return new Response(xml, {
-        headers: {
-          "Content-Type": "application/xml; charset=utf-8",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
+      const xml = renderSitemap(results || [], getSiteUrl(url), url.origin);
+      return new Response(xml, { headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     }
 
     return json({ error: "Not found" }, 404);

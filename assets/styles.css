@@ -60,14 +60,96 @@ body {
   gap: 4px;
   border-right: 1px solid #1e293b;
 }
-#railLogo {
+.rail-menu-btn {
   width: 36px;
   height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: #94a3b8;
+  cursor: pointer;
   margin-bottom: 12px;
+  transition: color 0.15s, background 0.15s;
+}
+.rail-menu-btn:hover { color: #e2e8f0; background: rgba(148, 163, 184, 0.12); }
+
+.app-menu-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1200;
+  transition: opacity 0.2s;
+}
+.app-menu-backdrop.hidden { display: none; }
+
+.app-menu {
+  position: fixed;
+  top: 0;
+  left: -280px;
+  width: 280px;
+  height: 100%;
+  background: #0f172a;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  transition: left 0.25s ease;
+}
+.app-menu.open { left: 0; }
+.app-menu.hidden { display: none; }
+
+.app-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #1e293b;
+}
+.app-menu-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.app-menu-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.app-menu-close:hover { color: #e2e8f0; }
+
+.app-menu-links {
+  flex: 1;
+  padding: 12px 0;
+}
+.app-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+.app-menu-link:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #f1f5f9;
+}
+.app-menu-link svg { color: #64748b; flex-shrink: 0; }
+
+.app-menu-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #1e293b;
+  font-size: 12px;
+  color: #475569;
 }
 .rail-btn {
   width: 48px;
@@ -320,23 +402,20 @@ body {
   color: #64748b;
   font-size: 12px;
 }
-.save-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #1e293b;
-  border-radius: 12px 12px 0 0;
-  padding: 16px 20px;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
-  z-index: 10;
-  transform: translateY(0);
-  transition: transform 0.2s ease, opacity 0.2s ease;
+.save-modal-card {
+  max-width: 380px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
-.save-overlay.hidden {
-  transform: translateY(100%);
-  opacity: 0;
-  pointer-events: none;
+.save-modal-card .save-overlay-header {
+  margin-bottom: 16px;
+}
+.save-modal-card .save-panel-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.save-modal-card .save-overlay-header button {
+  font-size: 24px;
 }
 .save-overlay-header {
   display: flex;
@@ -437,8 +516,11 @@ body {
 .new-list-btn-top:hover { background: #0d9488; }
 .modal-backdrop {
   position: fixed;
-  inset: 0;
-  z-index: 2000;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;

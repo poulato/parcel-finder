@@ -41,6 +41,10 @@ function onSignIn(response) {
   localStorage.setItem('geo_auth_token', authToken);
   localStorage.setItem('geo_auth_user', JSON.stringify(authUser));
   updateAuthUI();
+  fetch(API_BASE + '/auth/register', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders())
+  }).catch(function() {});
   loadLists().then(function() {
     if (typeof processPendingShareToken === 'function') {
       processPendingShareToken();

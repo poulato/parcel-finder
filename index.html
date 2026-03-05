@@ -15,12 +15,23 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=51" />
+  <link rel="stylesheet" href="./assets/styles.css?v=53" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-5F2S9Q2W');</script>
+  <!-- End Google Tag Manager -->
 </head>
 <body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5F2S9Q2W"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
   <header id="appHeader">
     <div id="headerTitle">
       <span id="headerIcon" aria-hidden="true">🏡</span>
@@ -92,17 +103,6 @@
       </div>
     </div>
 
-    <div id="saveOverlay" class="save-overlay hidden">
-      <div class="save-overlay-header">
-        <h3 class="save-panel-title">Save to list</h3>
-        <button id="saveOverlayClose" title="Close">&times;</button>
-      </div>
-      <div id="saveListPicker"></div>
-      <button id="newListBtn" class="new-list-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New List
-      </button>
-    </div>
 
     <div id="viewListParcels" class="sidebar-view">
       <button id="backToLists" class="back-btn">
@@ -217,8 +217,33 @@
     </div>
   </div>
 
+  <div id="appMenuBackdrop" class="app-menu-backdrop hidden" onclick="closeAppMenu()"></div>
+  <div id="appMenu" class="app-menu hidden">
+    <div class="app-menu-header">
+      <span class="app-menu-title">🏡 Geoktimonas</span>
+      <button class="app-menu-close" onclick="closeAppMenu()">&times;</button>
+    </div>
+    <div class="app-menu-links">
+      <a href="mailto:contact@geoktimonas.com" class="app-menu-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Contact
+      </a>
+      <a href="/privacy" class="app-menu-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Privacy Policy
+      </a>
+      <a href="/terms" class="app-menu-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Terms of Service
+      </a>
+    </div>
+    <div class="app-menu-footer">© 2026 Geoktimonas</div>
+  </div>
+
   <nav id="iconRail">
-    <div id="railLogo" aria-hidden="true">🏡</div>
+    <button id="railMenuBtn" class="rail-menu-btn" onclick="toggleAppMenu()" title="Menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
     <button class="rail-btn" data-tab="search" title="Search">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span>Search</span>
@@ -271,6 +296,10 @@
   </div>
 
   <nav id="bottomBar">
+    <button class="bottom-tab" onclick="toggleAppMenu()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      <span>Menu</span>
+    </button>
     <button class="bottom-tab active" data-tab="search">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span>Search</span>
@@ -288,6 +317,20 @@
       <span>List</span>
     </button>
   </nav>
+
+  <div id="saveModal" class="modal-backdrop hidden">
+    <div class="modal-card save-modal-card">
+      <div class="save-overlay-header">
+        <h3 class="save-panel-title">Save to list</h3>
+        <button id="saveOverlayClose" title="Close">&times;</button>
+      </div>
+      <div id="saveListPicker"></div>
+      <button id="newListBtn" class="new-list-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New List
+      </button>
+    </div>
+  </div>
 
   <div id="saleModal" class="modal-backdrop hidden">
     <div class="modal-card sale-modal-card">
@@ -371,11 +414,11 @@
   </noscript>
 
   <div id="googleSignInDiv" style="position:fixed; top:-9999px; left:-9999px;"></div>
-  <script src="./assets/auth.js?v=11" defer></script>
+  <script src="./assets/auth.js?v=12" defer></script>
   <script src="./assets/map.js?v=51" defer></script>
   <script src="./assets/lists.js?v=11" defer></script>
-  <script src="./assets/save.js?v=11" defer></script>
+  <script src="./assets/save.js?v=12" defer></script>
   <script src="./assets/sale.js?v=51" defer></script>
-  <script src="./assets/app.js?v=34" defer></script>
+  <script src="./assets/app.js?v=36" defer></script>
 </body>
 </html>
