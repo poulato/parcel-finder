@@ -60,6 +60,21 @@
     .user-row-avatar { width: 28px; height: 28px; border-radius: 50%; vertical-align: middle; margin-right: 8px; }
     .user-row-name { display: inline-flex; align-items: center; }
     .user-row-email { color: #94a3b8; }
+    .btn-edit { background: #1e3a5f; color: #93c5fd; }
+    .btn-edit:hover { background: #1e4d8a; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-box { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; width: 480px; max-width: 92vw; max-height: 85vh; overflow-y: auto; }
+    .modal-box h3 { font-size: 16px; margin-bottom: 16px; color: #e2e8f0; }
+    .modal-field { margin-bottom: 12px; }
+    .modal-field label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+    .modal-field input, .modal-field textarea, .modal-field select { width: 100%; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+    .modal-field textarea { resize: vertical; min-height: 70px; }
+    .modal-field input:focus, .modal-field textarea:focus, .modal-field select:focus { outline: none; border-color: #6b9eff; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .btn-cancel { background: #334155; color: #94a3b8; }
+    .btn-cancel:hover { background: #475569; color: #e2e8f0; }
+    .btn-save { background: #2563eb; color: #fff; }
+    .btn-save:hover { background: #1d4ed8; }
   </style>
 </head>
 <body>
@@ -218,19 +233,23 @@ function renderListingCard(l, status) {
     ? '<div class="listing-card-cert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Certificate provided</div>'
     : '';
 
+  var editBtn = '<button class="btn btn-edit" onclick=\'openEditModal(' + JSON.stringify(JSON.stringify(l)) + ')\'>Edit</button>';
   var actionsHTML = '';
   if (status === 'pending') {
     actionsHTML = '<div class="listing-card-actions">' +
       '<button class="btn btn-approve" onclick="adminAction(\'' + l.id + '\', \'active\')">Approve</button>' +
       '<button class="btn btn-reject" onclick="adminAction(\'' + l.id + '\', \'rejected\')">Reject</button>' +
+      editBtn +
       '</div>';
   } else if (status === 'active') {
     actionsHTML = '<div class="listing-card-actions">' +
       '<button class="btn btn-reject" onclick="adminAction(\'' + l.id + '\', \'rejected\')">Reject</button>' +
+      editBtn +
       '</div>';
   } else if (status === 'rejected') {
     actionsHTML = '<div class="listing-card-actions">' +
       '<button class="btn btn-approve" onclick="adminAction(\'' + l.id + '\', \'active\')">Approve</button>' +
+      editBtn +
       '</div>';
   }
 
@@ -336,6 +355,73 @@ function initAdminGoogleSignIn() {
   if (!restoreAdminSession()) {
     google.accounts.id.prompt();
   }
+}
+
+var editingId = null;
+
+function openEditModal(jsonStr) {
+  var l = JSON.parse(jsonStr);
+  editingId = l.id;
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'editModal';
+  overlay.onclick = function(e) { if (e.target === overlay) closeEditModal(); };
+  overlay.innerHTML =
+    '<div class="modal-box">' +
+      '<h3>Edit Listing</h3>' +
+      '<div class="modal-field"><label>Title</label><input id="editTitle" value="' + escapeHTML(l.title || '') + '" /></div>' +
+      '<div class="modal-field"><label>Price (€)</label><input id="editPrice" type="number" value="' + (l.price || '') + '" /></div>' +
+      '<div class="modal-field"><label>Description</label><textarea id="editDesc">' + escapeHTML(l.description || '') + '</textarea></div>' +
+      '<div class="modal-field"><label>Contact</label><input id="editContact" value="' + escapeHTML(l.contact || '') + '" /></div>' +
+      '<div class="modal-field"><label>Status</label>' +
+        '<select id="editStatus">' +
+          '<option value="pending"' + (l.status === 'pending' ? ' selected' : '') + '>Pending</option>' +
+          '<option value="active"' + (l.status === 'active' ? ' selected' : '') + '>Active</option>' +
+          '<option value="rejected"' + (l.status === 'rejected' ? ' selected' : '') + '>Rejected</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-cancel" onclick="closeEditModal()">Cancel</button>' +
+        '<button class="btn btn-save" id="editSaveBtn" onclick="saveEdit()">Save</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+}
+
+function closeEditModal() {
+  var m = document.getElementById('editModal');
+  if (m) m.remove();
+  editingId = null;
+}
+
+function saveEdit() {
+  if (!editingId) return;
+  var btn = document.getElementById('editSaveBtn');
+  if (btn) btn.disabled = true;
+
+  var body = {
+    title: document.getElementById('editTitle').value || null,
+    price: document.getElementById('editPrice').value ? Number(document.getElementById('editPrice').value) : null,
+    description: document.getElementById('editDesc').value || null,
+    contact: document.getElementById('editContact').value || null,
+    status: document.getElementById('editStatus').value
+  };
+
+  fetch(API_BASE + '/listings/' + encodeURIComponent(editingId), {
+    method: 'PUT',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, adminAuthHeaders()),
+    body: JSON.stringify(body)
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('Failed');
+    closeEditModal();
+    loadAllCounts();
+    loadListings(currentTab);
+  })
+  .catch(function() {
+    alert('Save failed');
+    if (btn) btn.disabled = false;
+  });
 }
 
 initAdminGoogleSignIn();

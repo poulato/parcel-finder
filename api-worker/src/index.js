@@ -652,7 +652,8 @@ export default {
         `SELECT id, user_id FROM sale_listings WHERE id = ?`
       ).bind(id).first();
       if (!listing) return json({ error: "Not found" }, 404);
-      if (listing.user_id !== user.id) return json({ error: "Not authorized" }, 403);
+      const admin = isAdmin(user, env);
+      if (listing.user_id !== user.id && !admin) return json({ error: "Not authorized" }, 403);
 
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid body" }, 400);
@@ -666,7 +667,8 @@ export default {
       if (body.contact !== undefined) { updates.push("contact = ?"); binds.push(body.contact); }
       if (body.certificate_key !== undefined) { updates.push("certificate_key = ?"); binds.push(body.certificate_key ?? null); }
       if (body.photo_keys !== undefined) { updates.push("photo_keys = ?"); binds.push(body.photo_keys ? JSON.stringify(body.photo_keys) : null); }
-      if (!isAdmin(user, env)) {
+      if (body.status !== undefined && admin) { updates.push("status = ?"); binds.push(body.status); }
+      else if (!admin) {
         updates.push("status = ?"); binds.push("pending");
       }
 
