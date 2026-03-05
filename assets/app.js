@@ -66,6 +66,14 @@ function closeSidebar() {
   } else {
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
   }
+  if (typeof clearSaleMarkers === 'function') clearSaleMarkers();
+  if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
+  clearListParcels();
+  currentParcel = null;
+  var sb = document.getElementById('searchBar');
+  var sbt = document.getElementById('searchBarText');
+  if (sb && sbt) { sbt.textContent = 'Search parcels'; sb.classList.remove('has-result'); }
+  history.replaceState(null, '', window.location.pathname);
   setTimeout(function() { map.invalidateSize(); }, 300);
 }
 

@@ -545,7 +545,8 @@ export default {
 
       let sql = `SELECT id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
                         dist_code, district, municipality, planning_zone, title, price,
-                        description, contact, certificate_key, photo_keys, status, views, created_at
+                        description, contact, certificate_key, photo_keys, status, views, created_at,
+                        centroid_lat, centroid_lng, geometry_rings
                  FROM sale_listings WHERE status = 'active'`;
       const binds = [];
 
@@ -625,8 +626,9 @@ export default {
         `INSERT INTO sale_listings (
           id, user_id, user_name, user_picture, sheet, plan_nbr, parcel_nbr,
           dist_code, district, municipality, planning_zone,
-          title, price, description, contact, certificate_key, photo_keys, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          title, price, description, contact, certificate_key, photo_keys, status,
+          centroid_lat, centroid_lng, geometry_rings
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         id, user.id, user.name || null, user.picture || null,
         body.sheet, body.plan_nbr, body.parcel_nbr,
@@ -636,7 +638,9 @@ export default {
         body.contact,
         body.certificate_key ?? null,
         body.photo_keys ? JSON.stringify(body.photo_keys) : null,
-        autoApprove ? 'active' : 'pending'
+        autoApprove ? 'active' : 'pending',
+        body.centroid_lat ?? null, body.centroid_lng ?? null,
+        body.geometry_rings ?? null
       ).run();
 
       const row = await env.DB.prepare(

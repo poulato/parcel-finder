@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=54" />
+  <link rel="stylesheet" href="./assets/styles.css?v=55" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -70,9 +70,9 @@
         <input type="text" id="parcel" placeholder="e.g. 190" />
       </div>
       <div class="field">
-        <label for="district">District (optional)</label>
+        <label for="district">District</label>
         <select id="district">
-          <option value="">Any</option>
+          <option value="">Any (optional)</option>
           <option value="1">Nicosia (Lefkosia)</option>
           <option value="5">Limassol (Lemesos)</option>
           <option value="4">Larnaca (Larnaka)</option>
@@ -293,6 +293,10 @@
 
   <div id="map-wrap">
     <div id="map"></div>
+    <div id="mapLoadingOverlay" class="map-loading-overlay hidden">
+      <div class="map-loading-spinner"></div>
+      <span>Loading listings...</span>
+    </div>
   </div>
 
   <nav id="bottomBar">

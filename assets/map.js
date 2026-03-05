@@ -137,6 +137,7 @@ function showParcel(feature, extra, outlineColor) {
 
   var attrs = feature.attributes;
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
+  var parcelCentroid = centroid(feature.geometry.rings);
   currentParcel = {
     sheet: clean(attrs.SHEET),
     plan_nbr: clean(attrs.PLAN_NBR),
@@ -147,7 +148,10 @@ function showParcel(feature, extra, outlineColor) {
     planning_zone: extra.planning_zone || '',
     planning_zone_desc: extra.planning_zone_desc || '',
     block_code: attrs.BLCK_CODE || '',
-    postal_code: extra.postal_code || ''
+    postal_code: extra.postal_code || '',
+    centroid_lat: parcelCentroid[0],
+    centroid_lng: parcelCentroid[1],
+    geometry_rings: JSON.stringify(feature.geometry.rings)
   };
   var rings = feature.geometry.rings;
   var coords = rings[0].map(function(p) { return [p[1], p[0]]; });

@@ -163,70 +163,102 @@ function showSaleListingsOnMap() {
   if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
   clearListParcels();
   currentParcel = null;
-  if (!saleListings.length) return Promise.resolve();
+  var overlay = document.getElementById('mapLoadingOverlay');
+  if (!saleListings.length) { if (overlay) overlay.classList.add('hidden'); return Promise.resolve(); }
 
-  var queries = saleListings.map(function(l) {
-    return findParcel(l.sheet, l.plan_nbr, l.parcel_nbr, l.dist_code)
-      .then(function(data) {
-        var features = data.features || [];
-        if (!features.length) return null;
-        return pickFeatureByMunicipality(features, l.municipality)
-          .then(function(feature) { return { listing: l, feature: feature }; });
-      })
-      .catch(function() { return null; });
+  var cached = [];
+  var needFetch = [];
+  saleListings.forEach(function(l) {
+    if (l.centroid_lat && l.centroid_lng && l.geometry_rings) {
+      try {
+        var rings = typeof l.geometry_rings === 'string' ? JSON.parse(l.geometry_rings) : l.geometry_rings;
+        cached.push({ listing: l, rings: rings, center: [l.centroid_lat, l.centroid_lng] });
+      } catch(e) { needFetch.push(l); }
+    } else {
+      needFetch.push(l);
+    }
   });
 
-  return Promise.all(queries).then(function(results) {
-    if (gen !== _saleMapGen) return;
-    if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
-    saleMarkersGroup.clearLayers();
-    var bounds = L.latLngBounds([]);
-    results.forEach(function(r) {
-      if (!r || !r.feature) return;
-      var coords = r.feature.geometry.rings[0].map(function(p) { return [p[1], p[0]]; });
-      var poly = L.polygon(coords, {
-        color: '#16a34a', weight: 4, fillColor: '#16a34a', fillOpacity: 0.2
-      });
-      function onListingClick() {
-        var listing = saleListings.find(function(l) { return l.id === r.listing.id; });
-        if (listing) {
-          saleMarkersGroup.clearLayers();
-          _skipTabSwitch = true;
-          var c = centroid(r.feature.geometry.rings);
-          map.setView([c[0], c[1]], 18);
-          var sb = document.getElementById('searchBar');
-          if (sb) sb.classList.add('loading');
-          addSalePriceMarker(listing, c);
-          enrich(c[0], c[1]).then(function(extra) {
-            showParcel(r.feature, extra, '#16a34a');
-          }).finally(function() { if (sb) sb.classList.remove('loading'); });
-          showSaleDetailInPanel(listing);
-          var el = document.getElementById('searchBarText');
-          if (el) {
-            el.textContent = listing.title || ('Parcel ' + listing.parcel_nbr);
-            document.getElementById('searchBar').classList.add('has-result');
-          }
-        }
-      }
-      poly.on('click', onListingClick);
-      saleMarkersGroup.addLayer(poly);
-      bounds.extend(poly.getBounds());
+  if (needFetch.length) {
+    if (overlay) overlay.classList.remove('hidden');
+  }
 
-      var center = centroid(r.feature.geometry.rings);
-      var priceLabel = r.listing.price ? '€' + Number(r.listing.price).toLocaleString() : '—';
-      var icon = L.divIcon({
-        className: 'sale-marker',
-        html: '<div class="sale-marker-label">' + priceLabel + '</div>',
-        iconSize: [80, 24],
-        iconAnchor: [40, 12]
-      });
-      var marker = L.marker([center[0], center[1]], { icon: icon });
-      marker.on('click', onListingClick);
-      saleMarkersGroup.addLayer(marker);
+  function addListingToMap(listing, rings, center) {
+    var coords = rings[0].map(function(p) { return [p[1], p[0]]; });
+    var poly = L.polygon(coords, {
+      color: '#16a34a', weight: 4, fillColor: '#16a34a', fillOpacity: 0.2
     });
+    function onListingClick() {
+      var l = saleListings.find(function(s) { return s.id === listing.id; });
+      if (!l) return;
+      saleMarkersGroup.clearLayers();
+      _skipTabSwitch = true;
+      map.setView([center[0], center[1]], 18);
+      var sb = document.getElementById('searchBar');
+      if (sb) sb.classList.add('loading');
+      addSalePriceMarker(l, center);
+      enrich(center[0], center[1]).then(function(extra) {
+        showParcel({ geometry: { rings: rings }, attributes: {} }, extra, '#16a34a');
+      }).finally(function() { if (sb) sb.classList.remove('loading'); });
+      showSaleDetailInPanel(l);
+      var el = document.getElementById('searchBarText');
+      if (el) {
+        el.textContent = l.title || ('Parcel ' + l.parcel_nbr);
+        document.getElementById('searchBar').classList.add('has-result');
+      }
+    }
+    poly.on('click', onListingClick);
+    saleMarkersGroup.addLayer(poly);
+
+    var priceLabel = listing.price ? '€' + Number(listing.price).toLocaleString() : '—';
+    var icon = L.divIcon({
+      className: 'sale-marker',
+      html: '<div class="sale-marker-label">' + priceLabel + '</div>',
+      iconSize: [80, 24],
+      iconAnchor: [40, 12]
+    });
+    var marker = L.marker([center[0], center[1]], { icon: icon });
+    marker.on('click', onListingClick);
+    saleMarkersGroup.addLayer(marker);
+    return poly;
+  }
+
+  var bounds = L.latLngBounds([]);
+  cached.forEach(function(c) {
+    var poly = addListingToMap(c.listing, c.rings, c.center);
+    if (poly) bounds.extend(poly.getBounds());
+  });
+
+  var fetchPromise = Promise.resolve();
+  if (needFetch.length) {
+    var queries = needFetch.map(function(l) {
+      return findParcel(l.sheet, l.plan_nbr, l.parcel_nbr, l.dist_code)
+        .then(function(data) {
+          var features = data.features || [];
+          if (!features.length) return null;
+          return pickFeatureByMunicipality(features, l.municipality)
+            .then(function(feature) { return { listing: l, feature: feature }; });
+        })
+        .catch(function() { return null; });
+    });
+    fetchPromise = Promise.all(queries).then(function(results) {
+      if (gen !== _saleMapGen) return;
+      results.forEach(function(r) {
+        if (!r || !r.feature) return;
+        var center = centroid(r.feature.geometry.rings);
+        var poly = addListingToMap(r.listing, r.feature.geometry.rings, center);
+        if (poly) bounds.extend(poly.getBounds());
+      });
+    });
+  }
+
+  return fetchPromise.then(function() {
+    if (gen !== _saleMapGen) return;
     if (bounds.isValid()) {
       map.fitBounds(bounds, { padding: [50, 50] });
     }
+  }).finally(function() {
+    if (overlay) overlay.classList.add('hidden');
   });
 }
 
@@ -513,6 +545,9 @@ function showSaleForm(existingListing) {
         body.district = currentParcel.district;
         body.municipality = currentParcel.municipality;
         body.planning_zone = currentParcel.planning_zone;
+        body.centroid_lat = currentParcel.centroid_lat;
+        body.centroid_lng = currentParcel.centroid_lng;
+        body.geometry_rings = currentParcel.geometry_rings;
       }
       var res = await authFetch(url, {
         method: method,
