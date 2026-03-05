@@ -1156,8 +1156,24 @@ body {
   margin-bottom: 12px;
   flex-shrink: 0;
 }
+.sale-add-listing-btn {
+  display: none;
+}
 @media(max-width:700px){
   .sale-filters { display: none; }
+  .sale-add-listing-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
 }
 #saleResults {
   flex: 1;
