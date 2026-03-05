@@ -36,12 +36,14 @@ function dlsQuery(layerId, params) {
   return fetch(DLS_BASE + '/' + layerId + '/query?' + qs).then(function(r) { return r.json(); });
 }
 
+var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR';
+
 function findParcel(sheet, plan, parcelNbr, distCode) {
   var where = "PARCEL_NBR=" + parcelNbr + " AND SHEET='" + sheet + "' AND PLAN_NBR='" + plan + "'";
   if (distCode) where += " AND DIST_CODE=" + distCode;
   return dlsQuery(0, {
     where: where,
-    outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
+    outFields: PARCEL_FIELDS,
     returnGeometry: 'true',
     outSR: '4326'
   });
@@ -53,7 +55,7 @@ function findParcelByCoords(lat, lng) {
     geometryType: 'esriGeometryPoint',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR',
+    outFields: PARCEL_FIELDS,
     returnGeometry: 'true',
     outSR: '4326'
   });
@@ -116,12 +118,12 @@ var detailsShareBtn = document.getElementById('detailsShareBtn');
 
 function buildParcelHTML(attrs, extra) {
   return '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
-    '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '\u2014') + '</span></div>' +
     '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
     '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
+    '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '\u2014') + '</span></div>' +
     '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
-    '<div><span class="label">Zone Detail:</span> <span class="value">' + extra.planning_zone_desc + '</span></div>';
+    '<div><span class="label">Zone Detail:</span> <span class="value zone-detail">' + extra.planning_zone_desc + '</span></div>';
 }
 
 function showParcel(feature, extra) {
