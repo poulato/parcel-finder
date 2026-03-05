@@ -62,14 +62,14 @@ ${ogImage ? `<meta name="twitter:image" content="${ogImage}"/>` : ''}
 ${GTM_HEAD}
 <style>
 .listing-detail-main{margin-left:56px;max-width:720px;padding:24px 16px}
-.gallery{display:flex;gap:8px;overflow-x:auto;margin-bottom:20px;border-radius:8px}
+.gallery{display:flex;gap:8px;overflow-x:auto;margin-bottom:20px;border-radius:8px;-webkit-overflow-scrolling:touch}
 .gallery img{height:260px;object-fit:cover;border-radius:8px;flex-shrink:0}
 .title{font-size:22px;font-weight:700;margin-bottom:4px;color:#f1f5f9}
 .price{font-size:20px;color:#6b9eff;font-weight:700;margin-bottom:8px}
 .badge{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:4px;margin-bottom:12px}
 .verified{background:#064e3b;color:#6ee7b7}
 .meta{font-size:14px;color:#94a3b8;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px}
-.desc{font-size:15px;line-height:1.6;color:#cbd5e1;margin-bottom:20px}
+.desc{font-size:15px;line-height:1.6;color:#cbd5e1;margin-bottom:20px;word-break:break-word}
 .poster{display:flex;align-items:center;gap:10px;font-size:14px;color:#94a3b8;margin-bottom:8px}
 .poster img{width:32px;height:32px;border-radius:50%}
 .contact{font-size:14px;color:#94a3b8;margin-bottom:24px;cursor:pointer}
@@ -80,7 +80,14 @@ ${GTM_HEAD}
 .footer a{color:#6b9eff;text-decoration:none}
 @media(max-width:700px){
   #iconRail{display:none!important}
-  .listing-detail-main{margin-left:0;padding:16px;padding-bottom:72px}
+  .listing-detail-main{margin-left:0;padding:12px;padding-bottom:72px}
+  .gallery{gap:6px;margin-bottom:14px}
+  .gallery img{height:180px;border-radius:6px}
+  .title{font-size:18px}
+  .price{font-size:18px}
+  .meta{font-size:13px;gap:4px}
+  .desc{font-size:14px}
+  .cta{display:block;text-align:center;width:100%;padding:14px;font-size:16px}
 }
 </style>
 </head>

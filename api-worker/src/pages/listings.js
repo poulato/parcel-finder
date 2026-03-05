@@ -57,9 +57,14 @@ ${GTM_HEAD}
 .footer a{color:#4a90d9;text-decoration:none}
 @media(max-width:700px){
   #iconRail{display:none!important}
-  .listings-main{margin-left:0;padding:16px;padding-bottom:72px}
-  .card-thumb,.card-thumb-empty{width:90px;min-height:80px}
-  .listings-main{padding-bottom:72px}
+  .listings-main{margin-left:0;padding:12px;padding-bottom:72px}
+  .card{flex-direction:column}
+  .card-thumb,.card-thumb-empty{width:100%;height:160px;min-height:auto}
+  .card-body{padding:12px}
+  .card-title{white-space:normal;font-size:15px}
+  .card-price{font-size:16px}
+  .card-loc{font-size:12px}
+  .filter-link{padding:8px 16px;font-size:13px}
 }
 </style>
 </head>

@@ -112,7 +112,9 @@ ${GTM_HEAD}
 .static-page-last-updated{font-size:12px;color:#64748b;margin-bottom:24px}
 @media(max-width:700px){
   #iconRail{display:none!important}
-  .static-page-main{margin-left:0;padding:20px 16px;padding-bottom:72px}
+  .static-page-main{margin-left:0;padding:16px 12px;padding-bottom:72px}
+  .static-page-main h1{font-size:19px}
+  .static-page-main h2{font-size:16px}
 }
 </style>
 </head>`;
