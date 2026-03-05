@@ -703,6 +703,16 @@ export default {
 
     // --- Admin ---
 
+    if (path === "/api/admin/users" && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
+
+      const { results } = await env.DB.prepare(
+        `SELECT id, email, name, picture, created_at FROM users ORDER BY datetime(created_at) DESC LIMIT 500`
+      ).all();
+      return json(results || []);
+    }
+
     if (path === "/api/admin/listings" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);

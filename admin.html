@@ -53,6 +53,13 @@
     .listing-card-date { font-size: 11px; color: #475569; margin-top: 4px; }
     #googleSignInAdmin { display: inline-block; }
     .loading { text-align: center; padding: 40px; color: #64748b; }
+    .user-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .user-table th { text-align: left; padding: 10px 12px; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .user-table td { padding: 10px 12px; border-bottom: 1px solid #1e293b; color: #e2e8f0; }
+    .user-table tr:hover td { background: rgba(148,163,184,0.05); }
+    .user-row-avatar { width: 28px; height: 28px; border-radius: 50%; vertical-align: middle; margin-right: 8px; }
+    .user-row-name { display: inline-flex; align-items: center; }
+    .user-row-email { color: #94a3b8; }
   </style>
 </head>
 <body>
@@ -83,6 +90,7 @@
         <button class="admin-tab active" data-status="pending" onclick="switchAdminTab('pending')">Pending <span class="count" id="countPending">0</span></button>
         <button class="admin-tab" data-status="active" onclick="switchAdminTab('active')">Active <span class="count" id="countActive">0</span></button>
         <button class="admin-tab" data-status="rejected" onclick="switchAdminTab('rejected')">Rejected <span class="count" id="countRejected">0</span></button>
+        <button class="admin-tab" data-status="users" onclick="switchAdminTab('users')">Users <span class="count" id="countUsers">0</span></button>
       </div>
       <div id="listingsContainer"></div>
     </div>
@@ -155,7 +163,11 @@ function switchAdminTab(status) {
   document.querySelectorAll('.admin-tab').forEach(function(t) {
     t.classList.toggle('active', t.getAttribute('data-status') === status);
   });
-  loadListings(status);
+  if (status === 'users') {
+    loadUsers();
+  } else {
+    loadListings(status);
+  }
 }
 
 function loadAllCounts() {
@@ -167,6 +179,12 @@ function loadAllCounts() {
         if (el) el.textContent = data.length || 0;
       });
   });
+  fetch(API_BASE + '/admin/users', { headers: adminAuthHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('countUsers');
+      if (el) el.textContent = data.length || 0;
+    });
 }
 
 function loadListings(status) {
@@ -237,6 +255,31 @@ function renderListingCard(l, status) {
     '<div class="listing-card-date">Submitted ' + formatDate(l.created_at) + '</div>' +
     actionsHTML +
   '</div>';
+}
+
+function loadUsers() {
+  var container = document.getElementById('listingsContainer');
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  fetch(API_BASE + '/admin/users', { headers: adminAuthHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(users) {
+      if (!users.length) {
+        container.innerHTML = '<div class="admin-empty">No registered users.</div>';
+        return;
+      }
+      var html = '<table class="user-table"><thead><tr><th>User</th><th>Email</th><th>Registered</th></tr></thead><tbody>';
+      html += users.map(function(u) {
+        var avatar = u.picture ? '<img class="user-row-avatar" src="' + escapeHTML(u.picture) + '" alt="" />' : '';
+        return '<tr><td><span class="user-row-name">' + avatar + escapeHTML(u.name || 'Unknown') + '</span></td>' +
+          '<td class="user-row-email">' + escapeHTML(u.email) + '</td>' +
+          '<td>' + formatDate(u.created_at) + '</td></tr>';
+      }).join('');
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    })
+    .catch(function() {
+      container.innerHTML = '<div class="admin-empty">Failed to load users.</div>';
+    });
 }
 
 function adminAction(id, newStatus) {
