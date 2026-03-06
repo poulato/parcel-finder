@@ -373,7 +373,7 @@ export default {
 
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
-                district, municipality, planning_zone, planning_zone_desc,
+                district, municipality, quarter, planning_zone, planning_zone_desc,
                 block_code, note, created_at
          FROM saved_parcels
          WHERE list_id = ?
@@ -405,13 +405,15 @@ export default {
         await env.DB.prepare(
           `INSERT INTO saved_parcels (
             id, user_id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
-            district, municipality, planning_zone, planning_zone_desc, block_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            district, municipality, quarter, planning_zone, planning_zone_desc,
+            block_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, access.list.user_id, listId,
           body.sheet, body.plan_nbr, body.parcel_nbr,
           body.dist_code ?? null, body.district ?? null,
-          body.municipality ?? null, body.planning_zone ?? null,
+          body.municipality ?? null, body.quarter ?? null,
+          body.planning_zone ?? null,
           body.planning_zone_desc ?? null, body.block_code ?? null
         ).run();
       } catch (err) {
@@ -424,7 +426,7 @@ export default {
 
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
-                district, municipality, planning_zone, planning_zone_desc,
+                district, municipality, quarter, planning_zone, planning_zone_desc,
                 block_code, created_at
          FROM saved_parcels WHERE id = ?`
       ).bind(id).all();

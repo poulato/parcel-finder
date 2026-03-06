@@ -85,18 +85,21 @@ function enrich(lat, lng) {
     spatialLookup(12, 'PLNZNT_NAME,PLNZNT_DESC', lat, lng),
     spatialLookup(16, 'VIL_NM_E', lat, lng),
     spatialLookup(15, 'DIST_NM_E', lat, lng),
-    spatialLookup(13, 'POST_CODE', lat, lng)
+    spatialLookup(13, 'POST_CODE', lat, lng),
+    spatialLookup(17, 'QRTR_NM_E', lat, lng)
   ]).then(function(results) {
     var zone = results[0].features && results[0].features[0] ? results[0].features[0].attributes : {};
     var muni = results[1].features && results[1].features[0] ? results[1].features[0].attributes : {};
     var dist = results[2].features && results[2].features[0] ? results[2].features[0].attributes : {};
     var post = results[3].features && results[3].features[0] ? results[3].features[0].attributes : {};
+    var qrtr = results[4].features && results[4].features[0] ? results[4].features[0].attributes : {};
     return {
       planning_zone: zone.PLNZNT_NAME || '\u2014',
       planning_zone_desc: zone.PLNZNT_DESC || '\u2014',
       municipality: muni.VIL_NM_E || '\u2014',
       district: dist.DIST_NM_E || '\u2014',
-      postal_code: post.POST_CODE ? String(Math.round(post.POST_CODE)) : '\u2014'
+      postal_code: post.POST_CODE ? String(Math.round(post.POST_CODE)) : '\u2014',
+      quarter: qrtr.QRTR_NM_E || ''
     };
   });
 }
@@ -128,9 +131,13 @@ var detailsAddBtn = document.getElementById('detailsAddBtn');
 var detailsShareBtn = document.getElementById('detailsShareBtn');
 
 function buildParcelHTML(attrs, extra) {
+  var quarterRow = extra.quarter
+    ? '<div><span class="label">Quarter:</span> <span class="value">' + extra.quarter + '</span></div>'
+    : '';
   return '<h3>Parcel ' + attrs.PARCEL_NBR + '</h3>' +
     '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
+    quarterRow +
     '<div><span class="label">Postal Code:</span> <span class="value">' + extra.postal_code + '</span></div>' +
     '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
     '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '\u2014') + '</span></div>' +
@@ -153,6 +160,7 @@ function showParcel(feature, extra, outlineColor) {
     dist_code: attrs.DIST_CODE || null,
     district: extra.district || '',
     municipality: extra.municipality || '',
+    quarter: extra.quarter || '',
     planning_zone: extra.planning_zone || '',
     planning_zone_desc: extra.planning_zone_desc || '',
     block_code: attrs.BLCK_CODE || '',

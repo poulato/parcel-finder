@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS saved_parcels (
   dist_code INTEGER,
   district TEXT,
   municipality TEXT,
+  quarter TEXT,
   planning_zone TEXT,
   planning_zone_desc TEXT,
   block_code TEXT,
