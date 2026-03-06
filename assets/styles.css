@@ -371,6 +371,12 @@ body {
 #sidebar input:focus, #sidebar select:focus { border-color: #3b82f6; }
 #sidebar .field { margin-bottom: 2px; }
 
+.field-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
 .bazaraki-row {
   display: flex;
   gap: 6px;
