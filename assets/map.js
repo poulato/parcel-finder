@@ -257,6 +257,8 @@ function doClear() {
     searchBarTextEl.textContent = 'Search parcels';
     searchBarEl.classList.remove('has-result');
   }
+  document.getElementById('bazarakiUrl').value = '';
+  document.getElementById('bazarakiClear').classList.remove('visible');
   document.getElementById('sheet').value = '';
   document.getElementById('plan').value = '';
   document.getElementById('parcel').value = '';
