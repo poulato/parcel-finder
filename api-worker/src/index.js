@@ -81,6 +81,10 @@ async function getAuthUser(request, env) {
   const token = auth.slice(7);
   try {
     const payload = await verifyGoogleToken(token, env.GOOGLE_CLIENT_ID);
+    const dbUser = await env.DB.prepare(
+      `SELECT suspended FROM users WHERE id = ?`
+    ).bind(payload.sub).first();
+    if (dbUser && dbUser.suspended) return { suspended: true };
     return {
       id: payload.sub,
       email: payload.email,
@@ -105,7 +109,7 @@ import { renderTermsPage } from './pages/terms.js';
 import { renderSitemap } from './pages/sitemap.js';
 
 function isAdmin(user, env) {
-  const adminEmail = env.ADMIN_EMAIL || "hello@truemythgames.com";
+  const adminEmail = env.ADMIN_EMAIL || "pavlibeis@gmail.com";
   return user && user.email && user.email.toLowerCase() === adminEmail.toLowerCase();
 }
 
@@ -146,6 +150,7 @@ export default {
     if (path === "/api/auth/me" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Not authenticated" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
       return json(user);
     }
 
@@ -154,6 +159,7 @@ export default {
     if (path === "/api/auth/register" && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const existing = await env.DB.prepare(
         `SELECT id FROM users WHERE id = ?`
@@ -178,6 +184,7 @@ export default {
     if (path === "/api/lists" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const { results: owned } = await env.DB.prepare(
         `SELECT l.id, l.name, l.visibility, l.share_token, l.edit_token, l.created_at, COUNT(p.id) as parcel_count
@@ -207,6 +214,7 @@ export default {
     if (path === "/api/lists" && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const body = await request.json().catch(() => null);
       if (!body || !body.name) return json({ error: "name is required" }, 400);
@@ -226,6 +234,7 @@ export default {
     if (path.startsWith("/api/lists/") && !path.includes("/parcels") && !path.includes("/share") && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const listId = decodeURIComponent(path.replace("/api/lists/", ""));
       if (!listId) return json({ error: "list id is required" }, 400);
@@ -245,6 +254,7 @@ export default {
     if (path.match(/^\/api\/lists\/[^/]+$/) && request.method === "PUT") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const listId = decodeURIComponent(path.split("/")[3]);
       const access = await getListAccess(env, listId, user);
@@ -281,6 +291,7 @@ export default {
     if (path.match(/^\/api\/lists\/[^/]+\/share-links$/) && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const listId = decodeURIComponent(path.split("/")[3]);
       const list = await env.DB.prepare(
@@ -305,6 +316,7 @@ export default {
     if (path.match(/^\/api\/shared\/[^/]+\/join$/) && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const token = decodeURIComponent(path.split("/")[3]);
 
@@ -353,6 +365,7 @@ export default {
     if (path.match(/^\/api\/lists\/[^/]+\/parcels$/) && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const listId = decodeURIComponent(path.split("/")[3]);
       const access = await getListAccess(env, listId, user);
@@ -373,6 +386,7 @@ export default {
     if (path.match(/^\/api\/lists\/[^/]+\/parcels$/) && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const listId = decodeURIComponent(path.split("/")[3]);
       const access = await getListAccess(env, listId, user);
@@ -448,6 +462,7 @@ export default {
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "PATCH") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const id = decodeURIComponent(path.replace("/api/parcels/", ""));
       const body = await request.json().catch(() => null);
@@ -476,6 +491,7 @@ export default {
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const id = decodeURIComponent(path.replace("/api/parcels/", ""));
       if (!id) return json({ error: "id is required" }, 400);
@@ -502,10 +518,16 @@ export default {
     if (path === "/api/upload" && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const contentType = request.headers.get("content-type") || "";
       if (!contentType.startsWith("image/")) {
         return json({ error: "Only image uploads are allowed" }, 400);
+      }
+
+      const contentLength = parseInt(request.headers.get("content-length") || "0");
+      if (contentLength > 5 * 1024 * 1024) {
+        return json({ error: "Image must be under 5MB" }, 400);
       }
 
       const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
@@ -610,6 +632,7 @@ export default {
     if (path === "/api/listings" && request.method === "POST") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid body" }, 400);
@@ -658,6 +681,7 @@ export default {
     if (path.match(/^\/api\/listings\/[^/]+$/) && request.method === "PUT") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const id = decodeURIComponent(path.split("/")[3]);
       const listing = await env.DB.prepare(
@@ -700,6 +724,7 @@ export default {
     if (path.match(/^\/api\/listings\/[^/]+$/) && request.method === "DELETE") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
 
       const id = decodeURIComponent(path.split("/")[3]);
       const listing = await env.DB.prepare(
@@ -757,9 +782,30 @@ export default {
       if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
 
       const { results } = await env.DB.prepare(
-        `SELECT id, email, name, picture, created_at FROM users ORDER BY datetime(created_at) DESC LIMIT 500`
+        `SELECT id, email, name, picture, suspended, created_at FROM users ORDER BY datetime(created_at) DESC LIMIT 500`
       ).all();
       return json(results || []);
+    }
+
+    if (path.match(/^\/api\/admin\/users\/[^/]+\/suspend$/) && request.method === "PATCH") {
+      const user = await getAuthUser(request, env);
+      if (!user || !isAdmin(user, env)) return json({ error: "Not authorized" }, 403);
+
+      const userId = decodeURIComponent(path.split("/")[4]);
+      const body = await request.json().catch(() => null);
+      if (!body || body.suspended === undefined) return json({ error: "suspended field required" }, 400);
+
+      const target = await env.DB.prepare(`SELECT id, email FROM users WHERE id = ?`).bind(userId).first();
+      if (!target) return json({ error: "User not found" }, 404);
+      if (target.email.toLowerCase() === (env.ADMIN_EMAIL || "pavlibeis@gmail.com").toLowerCase()) {
+        return json({ error: "Cannot suspend admin" }, 400);
+      }
+
+      await env.DB.prepare(
+        `UPDATE users SET suspended = ? WHERE id = ?`
+      ).bind(body.suspended ? 1 : 0, userId).run();
+
+      return json({ ok: true, suspended: !!body.suspended });
     }
 
     if (path === "/api/admin/listings" && request.method === "GET") {

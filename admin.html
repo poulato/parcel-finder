@@ -66,6 +66,12 @@
     .user-row-email { color: #94a3b8; }
     .btn-edit { background: #1e3a5f; color: #93c5fd; }
     .btn-edit:hover { background: #1e4d8a; }
+    .btn-suspend { background: #450a0a; color: #fca5a5; font-size: 12px; padding: 4px 10px; border-radius: 4px; border: none; cursor: pointer; }
+    .btn-suspend:hover { background: #7f1d1d; }
+    .btn-unsuspend { background: #166534; color: #bbf7d0; font-size: 12px; padding: 4px 10px; border-radius: 4px; border: none; cursor: pointer; }
+    .btn-unsuspend:hover { background: #15803d; }
+    .btn-suspend:disabled, .btn-unsuspend:disabled { opacity: 0.5; cursor: not-allowed; }
+    .user-suspended { color: #f87171; font-size: 11px; font-weight: 600; margin-left: 6px; }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
     .modal-box { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; width: 480px; max-width: 92vw; max-height: 85vh; overflow-y: auto; }
     .modal-box h3 { font-size: 16px; margin-bottom: 16px; color: #e2e8f0; }
@@ -305,12 +311,17 @@ function loadUsers() {
         container.innerHTML = '<div class="admin-empty">No registered users.</div>';
         return;
       }
-      var html = '<table class="user-table"><thead><tr><th>User</th><th>Email</th><th>Registered</th></tr></thead><tbody>';
+      var html = '<table class="user-table"><thead><tr><th>User</th><th>Email</th><th>Registered</th><th>Action</th></tr></thead><tbody>';
       html += users.map(function(u) {
         var avatar = u.picture ? '<img class="user-row-avatar" src="' + escapeHTML(u.picture) + '" alt="" />' : '';
-        return '<tr><td><span class="user-row-name">' + avatar + escapeHTML(u.name || 'Unknown') + '</span></td>' +
+        var suspendedBadge = u.suspended ? '<span class="user-suspended">SUSPENDED</span>' : '';
+        var actionBtn = u.suspended
+          ? '<button class="btn-unsuspend" onclick="toggleSuspend(\'' + u.id + '\', false, this)">Unsuspend</button>'
+          : '<button class="btn-suspend" onclick="toggleSuspend(\'' + u.id + '\', true, this)">Suspend</button>';
+        return '<tr><td><span class="user-row-name">' + avatar + escapeHTML(u.name || 'Unknown') + suspendedBadge + '</span></td>' +
           '<td class="user-row-email">' + escapeHTML(u.email) + '</td>' +
-          '<td>' + formatDate(u.created_at) + '</td></tr>';
+          '<td>' + formatDate(u.created_at) + '</td>' +
+          '<td>' + actionBtn + '</td></tr>';
       }).join('');
       html += '</tbody></table>';
       container.innerHTML = html;
@@ -318,6 +329,24 @@ function loadUsers() {
     .catch(function() {
       container.innerHTML = '<div class="admin-empty">Failed to load users.</div>';
     });
+}
+
+function toggleSuspend(userId, suspend, btn) {
+  if (!confirm(suspend ? 'Suspend this user? They will be blocked from all actions.' : 'Unsuspend this user?')) return;
+  btn.disabled = true;
+  fetch(API_BASE + '/admin/users/' + encodeURIComponent(userId) + '/suspend', {
+    method: 'PATCH',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, adminAuthHeaders()),
+    body: JSON.stringify({ suspended: suspend })
+  })
+  .then(function(res) {
+    if (!res.ok) return res.json().then(function(d) { throw new Error(d.error || 'Failed'); });
+    loadUsers();
+  })
+  .catch(function(e) {
+    alert(e.message || 'Action failed');
+    btn.disabled = false;
+  });
 }
 
 function loadAdminLists() {
