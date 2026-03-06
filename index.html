@@ -60,7 +60,10 @@
       <div class="field">
         <label for="bazarakiUrl">Bazaraki Link</label>
         <div class="bazaraki-row">
-          <input type="text" id="bazarakiUrl" placeholder="Paste bazaraki.com link..." />
+          <div class="bazaraki-input-wrap">
+            <input type="text" id="bazarakiUrl" placeholder="Paste bazaraki.com link..." />
+            <button type="button" id="bazarakiClear" class="bazaraki-clear" title="Clear">&times;</button>
+          </div>
           <button id="bazarakiBtn" onclick="doBazarakiSearch()">Go</button>
         </div>
       </div>

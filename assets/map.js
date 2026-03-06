@@ -22,10 +22,11 @@ var parcelLayer = null;
 var listParcelsGroup = L.layerGroup().addTo(map);
 var saleMarkersGroup = L.layerGroup().addTo(map);
 
-function showError(msg) {
+function showError(msg, type) {
   var el = document.getElementById('errorMsg');
   el.textContent = msg;
   el.style.display = msg ? 'block' : 'none';
+  el.style.color = type === 'warn' ? '#fbbf24' : '';
 }
 
 function dlsQuery(layerId, params) {
@@ -61,6 +62,19 @@ function findParcelByCoords(lat, lng) {
   return dlsQuery(0, {
     geometry: lng + ',' + lat,
     geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: PARCEL_FIELDS,
+    returnGeometry: 'true',
+    outSR: '4326'
+  });
+}
+
+function findParcelNearby(lat, lng, bufferDeg) {
+  var b = bufferDeg || 0.0005;
+  return dlsQuery(0, {
+    geometry: (lng - b) + ',' + (lat - b) + ',' + (lng + b) + ',' + (lat + b),
+    geometryType: 'esriGeometryEnvelope',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
     outFields: PARCEL_FIELDS,
@@ -322,6 +336,16 @@ function doSearch() {
     });
 }
 
+function nearestFeature(features, lat, lng) {
+  var best = null, bestDist = Infinity;
+  features.forEach(function(f) {
+    var c = centroid(f.geometry.rings);
+    var d = (c[0] - lat) * (c[0] - lat) + (c[1] - lng) * (c[1] - lng);
+    if (d < bestDist) { bestDist = d; best = f; }
+  });
+  return best;
+}
+
 function doBazarakiSearch() {
   var input = document.getElementById('bazarakiUrl');
   var rawUrl = input.value.trim();
@@ -338,6 +362,9 @@ function doBazarakiSearch() {
   btn.disabled = true;
   btn.textContent = '...';
 
+  var overlay = document.getElementById('mapLoadingOverlay');
+  if (overlay) { overlay.querySelector('span').textContent = 'Looking up Bazaraki listing...'; overlay.classList.remove('hidden'); }
+
   fetch(API_BASE + '/bazaraki?url=' + encodeURIComponent(rawUrl))
     .then(function(res) { return res.json(); })
     .then(function(data) {
@@ -345,20 +372,38 @@ function doBazarakiSearch() {
       if (data.error) { showError(data.error); return; }
       var lat = data.lat, lng = data.lng;
       map.setView([lat, lng], 18);
+
+      var approx = false;
       return findParcelByCoords(lat, lng).then(function(result) {
         if (gen !== _searchGen) return;
-        var feature = (result.features || [])[0];
-        if (!feature) { showError('No parcel found at this location.'); return; }
+        var features = result.features || [];
+        if (features.length) return features[0];
+        approx = true;
+        return findParcelNearby(lat, lng).then(function(nearby) {
+          if (gen !== _searchGen) return null;
+          var nf = nearby.features || [];
+          if (!nf.length) return null;
+          return nearestFeature(nf, lat, lng);
+        });
+      }).then(function(feature) {
+        if (!feature || gen !== _searchGen) {
+          if (gen === _searchGen) showError('No parcel found near this location.');
+          return;
+        }
         var attrs = feature.attributes;
         document.getElementById('sheet').value = attrs.SHEET || '';
         document.getElementById('plan').value = attrs.PLAN_NBR || '';
         document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
         document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
         var center = centroid(feature.geometry.rings);
+        map.setView([center[0], center[1]], 18);
         updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
         return enrich(center[0], center[1]).then(function(extra) {
           if (gen !== _searchGen) return;
           showParcel(feature, extra);
+          if (approx) {
+            showError('Approximate match — Bazaraki pin was not exact. Please verify this is the correct parcel.', 'warn');
+          }
         });
       });
     })
@@ -369,8 +414,19 @@ function doBazarakiSearch() {
     .finally(function() {
       btn.disabled = false;
       btn.textContent = 'Go';
+      if (overlay) overlay.classList.add('hidden');
     });
 }
+
+document.getElementById('bazarakiUrl').addEventListener('input', function() {
+  document.getElementById('bazarakiClear').classList.toggle('visible', this.value.length > 0);
+});
+
+document.getElementById('bazarakiClear').addEventListener('click', function() {
+  document.getElementById('bazarakiUrl').value = '';
+  this.classList.remove('visible');
+  document.getElementById('bazarakiUrl').focus();
+});
 
 document.getElementById('bazarakiUrl').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') { e.preventDefault(); doBazarakiSearch(); }
