@@ -147,6 +147,40 @@ export default {
       return json({ ok: true, service: "geoktimonas-api" });
     }
 
+    if (path === "/api/bazaraki" && request.method === "GET") {
+      const bazUrl = url.searchParams.get("url") || "";
+      if (!/^https?:\/\/(www\.)?bazaraki\.com\/adv\//.test(bazUrl)) {
+        return json({ error: "Invalid Bazaraki URL" }, 400, request);
+      }
+      try {
+        const res = await fetch(bazUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+          },
+          redirect: "follow",
+        });
+        if (!res.ok) {
+          return json({ error: "Failed to fetch listing (status " + res.status + ")" }, 502, request);
+        }
+        const html = await res.text();
+        const latMatch = html.match(/data-default-lat="([^"]+)"/);
+        const lngMatch = html.match(/data-default-lng="([^"]+)"/);
+        if (!latMatch || !lngMatch) {
+          return json({ error: "No location found on this listing" }, 404, request);
+        }
+        const lat = parseFloat(latMatch[1]);
+        const lng = parseFloat(lngMatch[1]);
+        if (isNaN(lat) || isNaN(lng)) {
+          return json({ error: "Invalid coordinates on listing" }, 422, request);
+        }
+        return json({ lat, lng }, 200, request);
+      } catch (e) {
+        return json({ error: "Failed to fetch listing" }, 502, request);
+      }
+    }
+
     if (path === "/api/auth/me" && request.method === "GET") {
       const user = await getAuthUser(request, env);
       if (!user) return json({ error: "Not authenticated" }, 401);

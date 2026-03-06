@@ -322,6 +322,60 @@ function doSearch() {
     });
 }
 
+function doBazarakiSearch() {
+  var input = document.getElementById('bazarakiUrl');
+  var rawUrl = input.value.trim();
+  if (!rawUrl) { showError('Paste a Bazaraki link.'); return; }
+  if (!/^https?:\/\/(www\.)?bazaraki\.com\/adv\//.test(rawUrl)) {
+    showError('Not a valid Bazaraki listing URL.');
+    return;
+  }
+
+  _searchGen++;
+  var gen = _searchGen;
+  showError('');
+  var btn = document.getElementById('bazarakiBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  fetch(API_BASE + '/bazaraki?url=' + encodeURIComponent(rawUrl))
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (gen !== _searchGen) return;
+      if (data.error) { showError(data.error); return; }
+      var lat = data.lat, lng = data.lng;
+      map.setView([lat, lng], 18);
+      return findParcelByCoords(lat, lng).then(function(result) {
+        if (gen !== _searchGen) return;
+        var feature = (result.features || [])[0];
+        if (!feature) { showError('No parcel found at this location.'); return; }
+        var attrs = feature.attributes;
+        document.getElementById('sheet').value = attrs.SHEET || '';
+        document.getElementById('plan').value = attrs.PLAN_NBR || '';
+        document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
+        document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
+        var center = centroid(feature.geometry.rings);
+        updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
+        return enrich(center[0], center[1]).then(function(extra) {
+          if (gen !== _searchGen) return;
+          showParcel(feature, extra);
+        });
+      });
+    })
+    .catch(function(err) {
+      if (gen !== _searchGen) return;
+      showError('Bazaraki lookup failed: ' + err.message);
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Go';
+    });
+}
+
+document.getElementById('bazarakiUrl').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); doBazarakiSearch(); }
+});
+
 function navigateToParcel(sheet, planNbr, parcelNbr, distCode) {
   document.getElementById('sheet').value = sheet;
   document.getElementById('plan').value = planNbr;

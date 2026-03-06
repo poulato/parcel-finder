@@ -58,6 +58,16 @@
 
     <div id="viewSearch" class="sidebar-view active">
       <div class="field">
+        <label for="bazarakiUrl">Bazaraki Link</label>
+        <div class="bazaraki-row">
+          <input type="text" id="bazarakiUrl" placeholder="Paste bazaraki.com link..." />
+          <button id="bazarakiBtn" onclick="doBazarakiSearch()">Go</button>
+        </div>
+      </div>
+
+      <div class="search-divider"><span>or search by parcel</span></div>
+
+      <div class="field">
         <label for="sheet">Sheet</label>
         <input type="text" id="sheet" placeholder="e.g. 47" />
       </div>

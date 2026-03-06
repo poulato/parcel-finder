@@ -370,6 +370,48 @@ body {
 #sidebar input::placeholder { color: #64748b; }
 #sidebar input:focus, #sidebar select:focus { border-color: #3b82f6; }
 #sidebar .field { margin-bottom: 2px; }
+
+.bazaraki-row {
+  display: flex;
+  gap: 6px;
+}
+.bazaraki-row input {
+  flex: 1;
+  min-width: 0;
+}
+#bazarakiBtn {
+  padding: 8px 14px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+#bazarakiBtn:hover { background: #d97706; }
+#bazarakiBtn:disabled { background: #aaa; cursor: not-allowed; }
+
+.search-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.search-divider::before,
+.search-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #334155;
+}
+
 #searchBtn {
   width: 100%; padding: 10px; background: #4a90d9; color: #fff;
   border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
