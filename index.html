@@ -57,46 +57,51 @@
     </div>
 
     <div id="viewSearch" class="sidebar-view active">
-      <div class="field">
-        <label for="bazarakiUrl">Bazaraki Link</label>
+      <nav class="search-mode-tabs">
+        <button class="search-mode-tab active" data-search-mode="parcel">Parcel</button>
+        <button class="search-mode-tab" data-search-mode="bazaraki">Listing Search</button>
+      </nav>
+
+      <div id="searchModeBazaraki" class="search-mode-panel">
         <div class="field-hint">Paste a Bazaraki listing URL to find its parcel on the map</div>
-        <div class="bazaraki-row">
-          <div class="bazaraki-input-wrap">
-            <input type="text" id="bazarakiUrl" placeholder="Paste bazaraki.com link..." />
-            <button type="button" id="bazarakiClear" class="bazaraki-clear" title="Clear">&times;</button>
+        <div class="field">
+          <div class="bazaraki-row">
+            <div class="bazaraki-input-wrap">
+              <input type="text" id="bazarakiUrl" placeholder="Paste bazaraki.com link..." />
+              <button type="button" id="bazarakiClear" class="bazaraki-clear" title="Clear">&times;</button>
+            </div>
+            <button id="bazarakiBtn" onclick="doBazarakiSearch()">Go</button>
           </div>
-          <button id="bazarakiBtn" onclick="doBazarakiSearch()">Go</button>
         </div>
       </div>
 
-      <div class="search-divider"><span>or search by parcel</span></div>
-
-      <div class="field">
-        <label for="sheet">Sheet</label>
-        <input type="text" id="sheet" placeholder="e.g. 47" />
+      <div id="searchModeParcel" class="search-mode-panel active">
+        <div class="field">
+          <label for="sheet">Sheet</label>
+          <input type="text" id="sheet" placeholder="e.g. 47" />
+        </div>
+        <div class="field">
+          <label for="plan">Plan</label>
+          <input type="text" id="plan" placeholder="e.g. 41" />
+        </div>
+        <div class="field">
+          <label for="parcel">Parcel Number</label>
+          <input type="text" id="parcel" placeholder="e.g. 190" />
+        </div>
+        <div class="field">
+          <label for="district">District</label>
+          <select id="district">
+            <option value="">Any (optional)</option>
+            <option value="1">Nicosia (Lefkosia)</option>
+            <option value="5">Limassol (Lemesos)</option>
+            <option value="4">Larnaca (Larnaka)</option>
+            <option value="6">Paphos (Pafos)</option>
+            <option value="2">Famagusta (Ammochostos)</option>
+            <option value="3">Kyrenia (Keryneia)</option>
+          </select>
+        </div>
+        <button id="searchBtn" onclick="doSearch()">Find Parcel</button>
       </div>
-      <div class="field">
-        <label for="plan">Plan</label>
-        <input type="text" id="plan" placeholder="e.g. 41" />
-      </div>
-      <div class="field">
-        <label for="parcel">Parcel Number</label>
-        <input type="text" id="parcel" placeholder="e.g. 190" />
-      </div>
-      <div class="field">
-        <label for="district">District</label>
-        <select id="district">
-          <option value="">Any (optional)</option>
-          <option value="1">Nicosia (Lefkosia)</option>
-          <option value="5">Limassol (Lemesos)</option>
-          <option value="4">Larnaca (Larnaka)</option>
-          <option value="6">Paphos (Pafos)</option>
-          <option value="2">Famagusta (Ammochostos)</option>
-          <option value="3">Kyrenia (Keryneia)</option>
-        </select>
-      </div>
-
-      <button id="searchBtn" onclick="doSearch()">Find Parcel</button>
 
       <button id="addToListBtn">Add to List</button>
       <div class="error" id="errorMsg"></div>

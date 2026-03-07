@@ -420,6 +420,16 @@ function doBazarakiSearch() {
     });
 }
 
+document.querySelectorAll('.search-mode-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.search-mode-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.search-mode-panel').forEach(function(p) { p.classList.remove('active'); });
+    this.classList.add('active');
+    var mode = this.getAttribute('data-search-mode');
+    document.getElementById('searchMode' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+  });
+});
+
 document.getElementById('bazarakiUrl').addEventListener('input', function() {
   document.getElementById('bazarakiClear').classList.toggle('visible', this.value.length > 0);
 });
