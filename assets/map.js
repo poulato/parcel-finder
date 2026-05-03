@@ -21,6 +21,25 @@ L.control.zoom({ position: 'bottomright' }).addTo(map);
 var parcelLayer = null;
 var listParcelsGroup = L.layerGroup().addTo(map);
 var saleMarkersGroup = L.layerGroup().addTo(map);
+var gpsDotMarker = null;
+
+function clearGpsDot() {
+  if (gpsDotMarker) {
+    map.removeLayer(gpsDotMarker);
+    gpsDotMarker = null;
+  }
+}
+
+function showGpsDot(lat, lng) {
+  clearGpsDot();
+  var icon = L.divIcon({
+    className: 'gps-dot-marker',
+    html: '<div class="gps-dot-wrap"><div class="gps-dot-ring"></div><div class="gps-dot-core"></div></div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
+  });
+  gpsDotMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 900, title: 'Your location (GPS)' }).addTo(map);
+}
 
 function showError(msg, type) {
   var el = document.getElementById('errorMsg');
@@ -248,6 +267,7 @@ detailsShareBtn.addEventListener('click', function() {
 });
 
 function doClear() {
+  clearGpsDot();
   if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
   clearListParcels();
   currentParcel = null;
@@ -301,6 +321,8 @@ function doSearch() {
     return;
   }
 
+  clearGpsDot();
+
   var btn = document.getElementById('searchBtn');
   btn.disabled = true;
   btn.textContent = 'Searching...';
@@ -348,6 +370,38 @@ function nearestFeature(features, lat, lng) {
   return best;
 }
 
+function resolveParcelAtLatLng(lat, lng, gen) {
+  return findParcelByCoords(lat, lng).then(function(result) {
+    if (gen !== _searchGen) return null;
+    var features = result.features || [];
+    if (features.length) return { feature: features[0], approx: false };
+    return findParcelNearby(lat, lng).then(function(nearby) {
+      if (gen !== _searchGen) return null;
+      var nf = nearby.features || [];
+      if (!nf.length) return null;
+      return { feature: nearestFeature(nf, lat, lng), approx: true };
+    });
+  });
+}
+
+function applyResolvedParcel(feature, approx, gen, approxHint) {
+  var attrs = feature.attributes;
+  document.getElementById('sheet').value = attrs.SHEET || '';
+  document.getElementById('plan').value = attrs.PLAN_NBR || '';
+  document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
+  document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
+  var center = centroid(feature.geometry.rings);
+  map.setView([center[0], center[1]], 18);
+  updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
+  return enrich(center[0], center[1]).then(function(extra) {
+    if (gen !== _searchGen) return;
+    showParcel(feature, extra);
+    if (approx) {
+      showError(approxHint || 'Approximate match — the pin was not exactly on a parcel. Please verify this is the correct parcel.', 'warn');
+    }
+  });
+}
+
 function doBazarakiSearch() {
   var input = document.getElementById('bazarakiUrl');
   var rawUrl = input.value.trim();
@@ -360,6 +414,7 @@ function doBazarakiSearch() {
   _searchGen++;
   var gen = _searchGen;
   showError('');
+  clearGpsDot();
   var btn = document.getElementById('bazarakiBtn');
   btn.disabled = true;
   btn.textContent = '...';
@@ -375,38 +430,12 @@ function doBazarakiSearch() {
       var lat = data.lat, lng = data.lng;
       map.setView([lat, lng], 18);
 
-      var approx = false;
-      return findParcelByCoords(lat, lng).then(function(result) {
-        if (gen !== _searchGen) return;
-        var features = result.features || [];
-        if (features.length) return features[0];
-        approx = true;
-        return findParcelNearby(lat, lng).then(function(nearby) {
-          if (gen !== _searchGen) return null;
-          var nf = nearby.features || [];
-          if (!nf.length) return null;
-          return nearestFeature(nf, lat, lng);
-        });
-      }).then(function(feature) {
-        if (!feature || gen !== _searchGen) {
+      return resolveParcelAtLatLng(lat, lng, gen).then(function(res) {
+        if (!res || !res.feature || gen !== _searchGen) {
           if (gen === _searchGen) showError('No parcel found near this location.');
           return;
         }
-        var attrs = feature.attributes;
-        document.getElementById('sheet').value = attrs.SHEET || '';
-        document.getElementById('plan').value = attrs.PLAN_NBR || '';
-        document.getElementById('parcel').value = attrs.PARCEL_NBR || '';
-        document.getElementById('district').value = attrs.DIST_CODE ? String(attrs.DIST_CODE) : '';
-        var center = centroid(feature.geometry.rings);
-        map.setView([center[0], center[1]], 18);
-        updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '');
-        return enrich(center[0], center[1]).then(function(extra) {
-          if (gen !== _searchGen) return;
-          showParcel(feature, extra);
-          if (approx) {
-            showError('Approximate match — Bazaraki pin was not exact. Please verify this is the correct parcel.', 'warn');
-          }
-        });
+        return applyResolvedParcel(res.feature, res.approx, gen, 'Approximate match — listing pin was not exact. Please verify this is the correct parcel.');
       });
     })
     .catch(function(err) {
@@ -418,6 +447,98 @@ function doBazarakiSearch() {
       btn.textContent = 'Go';
       if (overlay) overlay.classList.add('hidden');
     });
+}
+
+function doMyLocationSearch() {
+  if (!navigator.geolocation) {
+    showError('Location is not supported in this browser.');
+    return;
+  }
+  _searchGen++;
+  var gen = _searchGen;
+  showError('');
+  var btn = document.getElementById('myLocationBtn');
+  if (btn) btn.disabled = true;
+  var overlay = document.getElementById('mapLoadingOverlay');
+  if (overlay) {
+    overlay.querySelector('span').textContent = 'Getting your location...';
+    overlay.classList.remove('hidden');
+  }
+
+  function finish() {
+    if (btn) btn.disabled = false;
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  var approxHint = 'Approximate match — GPS was not exactly on a parcel boundary. Please verify this is the correct parcel.';
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      if (gen !== _searchGen) { finish(); return; }
+      if (overlay) overlay.querySelector('span').textContent = 'Finding parcel...';
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      map.setView([lat, lng], 18);
+      showGpsDot(lat, lng);
+
+      resolveParcelAtLatLng(lat, lng, gen).then(function(res) {
+        if (!res || !res.feature) {
+          if (gen === _searchGen) showError('No parcel found near your location.');
+          return;
+        }
+        var feature = res.feature;
+        var approx = res.approx;
+
+        if (isSaleTabActive()) {
+          var attrs = feature.attributes;
+          var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
+          var sheet = clean(attrs.SHEET);
+          var plan = clean(attrs.PLAN_NBR);
+          var parcel = clean(attrs.PARCEL_NBR);
+          var listing = saleListings.find(function(l) {
+            return clean(l.sheet) === sheet && clean(l.plan_nbr) === plan && clean(l.parcel_nbr) === parcel;
+          });
+          function showSaleOnMapFromGps(theListing, theFeature) {
+            saleMarkersGroup.clearLayers();
+            _skipTabSwitch = true;
+            var center = centroid(theFeature.geometry.rings);
+            map.setView([center[0], center[1]], 18);
+            var pl = theListing.price ? '€' + Number(theListing.price).toLocaleString() : '—';
+            var pi = L.divIcon({ className: 'sale-marker', html: '<div class="sale-marker-label">' + pl + '</div>', iconSize: [80, 24], iconAnchor: [40, 12] });
+            return enrich(center[0], center[1]).then(function(extra) {
+              if (gen !== _searchGen) return;
+              showParcel(theFeature, extra, '#16a34a');
+              if (approx) showError('Approximate match — GPS was not exactly on a parcel boundary. Please verify.', 'warn');
+              saleMarkersGroup.addLayer(L.marker([center[0], center[1]], { icon: pi }));
+              if (typeof showSaleDetailInPanel === 'function') showSaleDetailInPanel(theListing);
+              var el = document.getElementById('searchBarText');
+              if (el) {
+                el.textContent = theListing.title || ('Parcel ' + theListing.parcel_nbr);
+                document.getElementById('searchBar').classList.add('has-result');
+              }
+            });
+          }
+          if (listing) {
+            return showSaleOnMapFromGps(listing, feature);
+          }
+          return fetch('/api/listings/check?sheet=' + encodeURIComponent(sheet) + '&plan_nbr=' + encodeURIComponent(plan) + '&parcel_nbr=' + encodeURIComponent(parcel))
+            .then(function(r) { return r.json(); })
+            .then(function(results) {
+              if (gen !== _searchGen) return;
+              var active = results.find(function(l) { return l.status === 'active'; });
+              if (active) return showSaleOnMapFromGps(active, feature);
+              return applyResolvedParcel(feature, approx, gen, approxHint);
+            });
+        }
+        return applyResolvedParcel(feature, approx, gen, approxHint);
+      }).catch(function() {}).finally(finish);
+    },
+    function() {
+      if (gen === _searchGen) showError('Could not get your location. Check that permission is allowed.');
+      finish();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
 }
 
 document.querySelectorAll('.search-mode-tab').forEach(function(tab) {
@@ -458,6 +579,7 @@ function clearListParcels() {
 
 function showAllListParcels(parcels) {
   _searchGen++;
+  clearGpsDot();
   clearListParcels();
   if (parcelLayer) { map.removeLayer(parcelLayer); parcelLayer = null; }
   currentParcel = null;
@@ -518,6 +640,7 @@ map.on('click', function(e) {
     return;
   }
   showError('');
+  clearGpsDot();
 
   if (isSaleTabActive()) {
     findParcelByCoords(e.latlng.lat, e.latlng.lng)

@@ -459,6 +459,71 @@ body {
 }
 #searchBtn:hover { background: #3a7bc8; }
 #searchBtn:disabled { background: #aaa; cursor: not-allowed; }
+
+.my-location-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.my-location-btn:hover {
+  background: rgba(71, 85, 105, 0.35);
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+.my-location-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gps-dot-marker {
+  background: transparent !important;
+  border: none !important;
+}
+.gps-dot-wrap {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+.gps-dot-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.gps-dot-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  border-radius: 50%;
+  border: 2px solid rgba(59, 130, 246, 0.55);
+  animation: gps-dot-pulse 1.8s ease-out infinite;
+  z-index: 1;
+  box-sizing: border-box;
+}
+@keyframes gps-dot-pulse {
+  0% { transform: scale(0.65); opacity: 1; }
+  100% { transform: scale(1.85); opacity: 0; }
+}
+
 #addToListBtn {
   width: 100%;
   padding: 10px;
