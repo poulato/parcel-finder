@@ -147,6 +147,21 @@ async function getListAccess(env, listId, user) {
   return null;
 }
 
+async function ensureParcelSortOrder(env, listId) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, sort_order, created_at FROM saved_parcels WHERE list_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC`
+  ).bind(listId).all();
+  if (!results?.length) return;
+  let needsBackfill = false;
+  for (let i = 0; i < results.length; i++) {
+    if (Number(results[i].sort_order) !== i) needsBackfill = true;
+  }
+  if (!needsBackfill) return;
+  for (let i = 0; i < results.length; i++) {
+    await env.DB.prepare(`UPDATE saved_parcels SET sort_order = ? WHERE id = ?`).bind(i, results[i].id).run();
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -365,6 +380,104 @@ export default {
       return json({ share_token: shareToken, edit_token: editToken });
     }
 
+    if (path.match(/^\/api\/lists\/[^/]+\/shares$/) && request.method === "GET") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
+      const list = await env.DB.prepare(
+        `SELECT l.id, l.user_id, u.email, u.name, u.picture
+         FROM lists l JOIN users u ON u.id = l.user_id WHERE l.id = ?`
+      ).bind(listId).first();
+      if (!list || list.user_id !== user.id) return json({ error: "Not authorized" }, 403);
+
+      const { results: members } = await env.DB.prepare(
+        `SELECT s.id, s.email, s.role, s.created_at, u.name, u.picture
+         FROM list_shares s
+         LEFT JOIN users u ON LOWER(u.email) = LOWER(s.email)
+         WHERE s.list_id = ?
+         ORDER BY datetime(s.created_at) ASC`
+      ).bind(listId).all();
+
+      return json({
+        owner: { email: list.email, name: list.name, picture: list.picture },
+        members: members || []
+      });
+    }
+
+    if (path.match(/^\/api\/lists\/[^/]+\/shares$/) && request.method === "POST") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
+      const list = await env.DB.prepare(
+        `SELECT id, user_id FROM lists WHERE id = ? AND user_id = ?`
+      ).bind(listId, user.id).first();
+      if (!list) return json({ error: "List not found" }, 404);
+
+      const body = await request.json().catch(() => null);
+      if (!body || !body.email) return json({ error: "email is required" }, 400);
+
+      const email = String(body.email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return json({ error: "Enter a valid email address" }, 400);
+      }
+      if (email === user.email.toLowerCase()) {
+        return json({ error: "You already own this list" }, 400);
+      }
+
+      const role = body.role === "editor" ? "editor" : "viewer";
+
+      const existing = await env.DB.prepare(
+        `SELECT id, role FROM list_shares WHERE list_id = ? AND LOWER(email) = ?`
+      ).bind(listId, email).first();
+
+      if (existing) {
+        if (role === "editor" && existing.role === "viewer") {
+          await env.DB.prepare(`UPDATE list_shares SET role = 'editor' WHERE id = ?`).bind(existing.id).run();
+        }
+        const updated = await env.DB.prepare(
+          `SELECT s.id, s.email, s.role, s.created_at, u.name, u.picture
+           FROM list_shares s LEFT JOIN users u ON LOWER(u.email) = LOWER(s.email) WHERE s.id = ?`
+        ).bind(existing.id).first();
+        return json(updated);
+      }
+
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO list_shares (id, list_id, email, role) VALUES (?, ?, ?, ?)`
+      ).bind(id, listId, email, role).run();
+
+      const member = await env.DB.prepare(
+        `SELECT s.id, s.email, s.role, s.created_at, u.name, u.picture
+         FROM list_shares s LEFT JOIN users u ON LOWER(u.email) = LOWER(s.email) WHERE s.id = ?`
+      ).bind(id).first();
+      return json(member, 201);
+    }
+
+    if (path.match(/^\/api\/lists\/[^/]+\/shares\/[^/]+$/) && request.method === "DELETE") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
+
+      const parts = path.split("/");
+      const listId = decodeURIComponent(parts[3]);
+      const shareId = decodeURIComponent(parts[5]);
+
+      const list = await env.DB.prepare(
+        `SELECT id FROM lists WHERE id = ? AND user_id = ?`
+      ).bind(listId, user.id).first();
+      if (!list) return json({ error: "Not authorized" }, 403);
+
+      const { meta } = await env.DB.prepare(
+        `DELETE FROM list_shares WHERE id = ? AND list_id = ?`
+      ).bind(shareId, listId).run();
+      if (!meta || !meta.changes) return json({ error: "Share not found" }, 404);
+      return json({ ok: true });
+    }
+
     // --- Join shared list (requires auth, auto-saves to user's lists) ---
 
     if (path.match(/^\/api\/shared\/[^/]+\/join$/) && request.method === "POST") {
@@ -425,16 +538,54 @@ export default {
       const access = await getListAccess(env, listId, user);
       if (!access) return json({ error: "Not authorized" }, 403);
 
+      await ensureParcelSortOrder(env, listId);
+
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, quarter, planning_zone, planning_zone_desc,
-                block_code, note, photo_keys, area_sqm, ownership_pct, ownership_fraction, parcel_title, location_note, created_at
+                block_code, note, photo_keys, area_sqm, ownership_pct, ownership_fraction, parcel_title, location_note, sort_order, created_at
          FROM saved_parcels
          WHERE list_id = ?
-         ORDER BY datetime(created_at) DESC`
+         ORDER BY sort_order ASC, datetime(created_at) ASC`
       ).bind(listId).all();
 
       return json(results || []);
+    }
+
+    if (path.match(/^\/api\/lists\/[^/]+\/parcels\/order$/) && request.method === "PUT") {
+      const user = await getAuthUser(request, env);
+      if (!user) return json({ error: "Authentication required" }, 401);
+      if (user.suspended) return json({ error: "Account suspended" }, 403);
+
+      const listId = decodeURIComponent(path.split("/")[3]);
+      const access = await getListAccess(env, listId, user);
+      if (!access || (access.role !== "owner" && access.role !== "editor")) {
+        return json({ error: "Not authorized" }, 403);
+      }
+
+      const body = await request.json().catch(() => null);
+      if (!body || !Array.isArray(body.order)) {
+        return json({ error: "order array is required" }, 400);
+      }
+
+      const order = body.order.map((id) => String(id)).filter(Boolean);
+      if (!order.length) return json({ error: "order cannot be empty" }, 400);
+
+      const { results: existing } = await env.DB.prepare(
+        `SELECT id FROM saved_parcels WHERE list_id = ?`
+      ).bind(listId).all();
+      const existingIds = new Set((existing || []).map((r) => r.id));
+      if (order.length !== existingIds.size || order.some((id) => !existingIds.has(id))) {
+        return json({ error: "Invalid parcel order" }, 400);
+      }
+
+      for (let i = 0; i < order.length; i++) {
+        await env.DB.prepare(
+          `UPDATE saved_parcels SET sort_order = ? WHERE id = ? AND list_id = ?`
+        ).bind(i, order[i], listId).run();
+      }
+
+      return json({ ok: true });
     }
 
     if (path.match(/^\/api\/lists\/[^/]+\/parcels$/) && request.method === "POST") {
@@ -455,20 +606,25 @@ export default {
       }
 
       const id = crypto.randomUUID();
+      const maxRow = await env.DB.prepare(
+        `SELECT MAX(sort_order) as m FROM saved_parcels WHERE list_id = ?`
+      ).bind(listId).first();
+      const sortOrder = (maxRow?.m ?? -1) + 1;
       try {
         await env.DB.prepare(
           `INSERT INTO saved_parcels (
             id, user_id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
             district, municipality, quarter, planning_zone, planning_zone_desc,
-            block_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            block_code, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, access.list.user_id, listId,
           body.sheet, body.plan_nbr, body.parcel_nbr,
           body.dist_code ?? null, body.district ?? null,
           body.municipality ?? null, body.quarter ?? null,
           body.planning_zone ?? null,
-          body.planning_zone_desc ?? null, body.block_code ?? null
+          body.planning_zone_desc ?? null, body.block_code ?? null,
+          sortOrder
         ).run();
       } catch (err) {
         if (String(err).includes("UNIQUE")) {

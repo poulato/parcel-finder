@@ -1,5 +1,7 @@
 var userLists = [];
 var sharedLists = [];
+var currentListCanEdit = false;
+var listParcelDragId = null;
 var currentListId = null;
 var currentListRole = null;
 var currentListParcels = [];
@@ -115,11 +117,10 @@ function renderLists() {
   var html = '';
 
   html += userLists.map(function(list) {
-    var shareBadge = (list.share_token || list.edit_token) ? '<span class="list-share-badge">Shared</span>' : '';
     return (
       '<div class="lists-item" data-list-id="' + list.id + '">' +
         '<div>' +
-          '<div class="lists-item-name">' + escapeHTML(list.name) + shareBadge + '</div>' +
+          '<div class="lists-item-name">' + escapeHTML(list.name) + '</div>' +
           '<div class="lists-item-count">' + (list.parcel_count || 0) + ' parcels</div>' +
         '</div>' +
         '<div class="lists-item-actions">' +
@@ -214,6 +215,11 @@ function closeAllListMenus() {
   document.querySelectorAll('.lists-menu-dropdown').forEach(function(d) {
     d.classList.add('hidden');
   });
+  document.querySelectorAll('.lists-item-menu-open').forEach(function(el) {
+    el.classList.remove('lists-item-menu-open');
+  });
+  var detailHeader = document.querySelector('.list-detail-header');
+  if (detailHeader) detailHeader.classList.remove('list-detail-menu-open');
 }
 
 document.getElementById('listsContainer').addEventListener('click', function(e) {
@@ -222,9 +228,13 @@ document.getElementById('listsContainer').addEventListener('click', function(e) 
     e.stopPropagation();
     var listId = menuBtn.getAttribute('data-menu-list');
     var dropdown = document.querySelector('[data-dropdown-list="' + listId + '"]');
+    var listItem = menuBtn.closest('.lists-item');
     var wasHidden = dropdown.classList.contains('hidden');
     closeAllListMenus();
-    if (wasHidden) dropdown.classList.remove('hidden');
+    if (wasHidden) {
+      dropdown.classList.remove('hidden');
+      if (listItem) listItem.classList.add('lists-item-menu-open');
+    }
     return;
   }
 
@@ -273,6 +283,7 @@ async function openListParcels(listId, role) {
   var isOwner = currentListRole === 'owner';
   var isEditor = currentListRole === 'editor';
   var canEdit = isOwner || isEditor;
+  currentListCanEdit = canEdit;
 
   var titleEl = document.getElementById('listParcelsTitle');
   var renameInput = document.getElementById('listParcelsRename');
@@ -296,13 +307,15 @@ async function openListParcels(listId, role) {
     var parcels = await res.json();
     if (!parcels.length) {
       document.getElementById('listParcelsEmpty').style.display = 'block';
+      var emptyHint = document.getElementById('listReorderHint');
+      if (emptyHint) emptyHint.classList.add('hidden');
       return;
     }
     currentListParcels = parcels;
     document.getElementById('showAllParcelsBtn').style.display = '';
-    document.getElementById('listParcels').innerHTML = parcels.map(function(item) {
-      return renderParcelItem(item, canEdit);
-    }).join('');
+    var reorderHint = document.getElementById('listReorderHint');
+    if (reorderHint) reorderHint.classList.toggle('hidden', !canEdit);
+    renderListParcels(canEdit);
   } catch (err) {
     console.error(err);
   }
@@ -394,6 +407,75 @@ function updateListNoteLinePreview(parcelId, noteVal) {
   line.innerHTML = buildListNoteLineInnerHTML(noteVal);
 }
 
+function renderListParcels(canEdit) {
+  if (listParcelDragId) return;
+  var container = document.getElementById('listParcels');
+  if (!container) return;
+  container.innerHTML = currentListParcels.map(function(item) {
+    return renderParcelItem(item, canEdit);
+  }).join('');
+}
+
+function getListParcelOrderIds() {
+  return Array.prototype.map.call(
+    document.querySelectorAll('#listParcels .parcel-list-item[data-parcel-id]'),
+    function(el) { return el.getAttribute('data-parcel-id'); }
+  );
+}
+
+async function persistListParcelOrder() {
+  if (!currentListId) return false;
+  var order = getListParcelOrderIds();
+  currentListParcels.sort(function(a, b) {
+    return order.indexOf(a.id) - order.indexOf(b.id);
+  });
+  try {
+    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(currentListId) + '/parcels/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: order })
+    });
+    if (!res.ok) throw new Error('failed');
+    return true;
+  } catch (err) {
+    console.error(err);
+    showError('Failed to save parcel order.');
+    return false;
+  }
+}
+
+function showListOrderSavedFeedback() {
+  var hint = document.getElementById('listReorderHint');
+  if (!hint) return;
+  hint.textContent = 'Order saved';
+  hint.classList.add('is-saved');
+  setTimeout(function() {
+    hint.textContent = 'Drag ⋮⋮ to reorder parcels';
+    hint.classList.remove('is-saved');
+  }, 1600);
+}
+
+function flashListParcelItem(parcelId) {
+  var el = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!el) return;
+  el.classList.add('parcel-list-order-flash');
+  setTimeout(function() { el.classList.remove('parcel-list-order-flash'); }, 700);
+}
+
+async function moveListParcel(parcelId, delta) {
+  var idx = currentListParcels.findIndex(function(p) { return p.id === parcelId; });
+  if (idx < 0) return;
+  var newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= currentListParcels.length) return;
+  closeAllParcelMenus();
+  var item = currentListParcels.splice(idx, 1)[0];
+  currentListParcels.splice(newIdx, 0, item);
+  renderListParcels(currentListCanEdit);
+  flashListParcelItem(parcelId);
+  await persistListParcelOrder();
+  showListOrderSavedFeedback();
+}
+
 function renderParcelItem(item, canEdit) {
   var refLine = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
   var titleLine = item.parcel_title
@@ -433,7 +515,15 @@ function renderParcelItem(item, canEdit) {
       ' Share' +
     '</button>';
   var editMenuHTML = canEdit
-    ? '<button data-sale-parcel="' + item.id + '">' +
+    ? '<button data-move-parcel-up="' + item.id + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>' +
+        ' Move up' +
+      '</button>' +
+      '<button data-move-parcel-down="' + item.id + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+        ' Move down' +
+      '</button>' +
+      '<button data-sale-parcel="' + item.id + '">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
         ' List for sale' +
       '</button>' +
@@ -452,9 +542,16 @@ function renderParcelItem(item, canEdit) {
         editMenuHTML +
       '</div>' +
     '</div>';
+  var dragHandleHTML = canEdit
+    ? '<div class="parcel-list-drag-handle" data-drag-handle role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>' +
+      '</div>'
+    : '';
   return (
-    '<div class="parcel-list-item" data-parcel-id="' + item.id + '">' +
-      '<div class="parcel-list-item-row" data-goto-parcel="' + data + '">' +
+    '<div class="parcel-list-item' + (canEdit ? ' parcel-list-reorderable' : '') + '" data-parcel-id="' + item.id + '">' +
+      '<div class="parcel-list-main">' +
+        dragHandleHTML +
+        '<div class="parcel-list-item-row" data-goto-parcel="' + data + '">' +
         '<div class="parcel-list-info">' +
           titleLine +
           '<div style="color:#94a3b8;font-size:11px;">' + area + '</div>' +
@@ -464,6 +561,7 @@ function renderParcelItem(item, canEdit) {
           photosHTML +
         '</div>' +
         menuHTML +
+        '</div>' +
       '</div>' +
       noteHTML +
     '</div>'
@@ -473,6 +571,9 @@ function renderParcelItem(item, canEdit) {
 function closeAllParcelMenus() {
   document.querySelectorAll('.parcel-menu-dropdown').forEach(function(d) {
     d.classList.add('hidden');
+  });
+  document.querySelectorAll('.parcel-list-item-menu-open').forEach(function(el) {
+    el.classList.remove('parcel-list-item-menu-open');
   });
 }
 
@@ -516,9 +617,13 @@ document.getElementById('listParcels').addEventListener('click', async function(
     e.stopPropagation();
     var pid = menuBtn.getAttribute('data-parcel-menu');
     var dropdown = document.querySelector('[data-parcel-dropdown="' + pid + '"]');
+    var listItem = menuBtn.closest('.parcel-list-item');
     var wasHidden = dropdown.classList.contains('hidden');
     closeAllParcelMenus();
-    if (wasHidden) dropdown.classList.remove('hidden');
+    if (wasHidden) {
+      dropdown.classList.remove('hidden');
+      if (listItem) listItem.classList.add('parcel-list-item-menu-open');
+    }
     return;
   }
 
@@ -547,6 +652,22 @@ document.getElementById('listParcels').addEventListener('click', async function(
     if (shareItem && typeof shareParcelFromList === 'function') {
       shareParcelFromList(shareItem);
     }
+    return;
+  }
+
+  var moveUpBtn = e.target.closest('[data-move-parcel-up]');
+  if (moveUpBtn) {
+    e.stopPropagation();
+    closeAllParcelMenus();
+    moveListParcel(moveUpBtn.getAttribute('data-move-parcel-up'), -1);
+    return;
+  }
+
+  var moveDownBtn = e.target.closest('[data-move-parcel-down]');
+  if (moveDownBtn) {
+    e.stopPropagation();
+    closeAllParcelMenus();
+    moveListParcel(moveDownBtn.getAttribute('data-move-parcel-down'), 1);
     return;
   }
 
@@ -630,7 +751,14 @@ document.getElementById('showAllParcelsBtn').addEventListener('click', function(
 // --- List detail 3-dot menu ---
 document.getElementById('listDetailMenuBtn').addEventListener('click', function(e) {
   e.stopPropagation();
-  document.getElementById('listDetailDropdown').classList.toggle('hidden');
+  var dropdown = document.getElementById('listDetailDropdown');
+  var header = document.querySelector('.list-detail-header');
+  var wasHidden = dropdown.classList.contains('hidden');
+  closeAllListMenus();
+  if (wasHidden) {
+    dropdown.classList.remove('hidden');
+    if (header) header.classList.add('list-detail-menu-open');
+  }
 });
 
 var renameSkipBlur = false;
@@ -706,6 +834,7 @@ document.getElementById('deleteListBtn').addEventListener('click', async functio
 
 var shareViewURL = '';
 var shareEditURL = '';
+var shareModalListId = null;
 
 document.getElementById('shareListBtn').addEventListener('click', function(e) {
   e.stopPropagation();
@@ -718,17 +847,85 @@ function buildShareURL(token) {
   return window.location.origin + window.location.pathname + '?share=' + token;
 }
 
+function renderSharePeople(data) {
+  var container = document.getElementById('sharePeopleList');
+  if (!container || !data) return;
+
+  var owner = data.owner || {};
+  var members = data.members || [];
+  var ownerLabel = owner.name ? escapeHTML(owner.name) : escapeHTML(owner.email || 'You');
+  var ownerHTML =
+    '<div class="share-person-row share-person-owner">' +
+      '<div class="share-person-info">' +
+        '<span class="share-person-name">' + ownerLabel + '</span>' +
+        (owner.name ? '<span class="share-person-email">' + escapeHTML(owner.email) + '</span>' : '') +
+        '<span class="share-person-role">Owner</span>' +
+      '</div>' +
+    '</div>';
+
+  var membersHTML = members.length
+    ? members.map(function(m) {
+        var label = m.name ? escapeHTML(m.name) : escapeHTML(m.email);
+        return (
+          '<div class="share-person-row">' +
+            '<div class="share-person-info">' +
+              '<span class="share-person-name">' + label + '</span>' +
+              (m.name ? '<span class="share-person-email">' + escapeHTML(m.email) + '</span>' : '') +
+              '<span class="share-person-role">' + (m.role === 'editor' ? 'Can edit' : 'Can view') + '</span>' +
+            '</div>' +
+            '<button type="button" class="share-person-remove" data-remove-share="' + escapeHTML(m.id) + '" title="Remove access">&times;</button>' +
+          '</div>'
+        );
+      }).join('')
+    : '<div class="share-people-empty">No one else has access yet. Add someone by email or send a link below.</div>';
+
+  container.innerHTML = ownerHTML + membersHTML;
+}
+
+function showSharePeopleError(msg) {
+  var el = document.getElementById('sharePeopleError');
+  if (!el) return;
+  if (msg) {
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  } else {
+    el.textContent = '';
+    el.classList.add('hidden');
+  }
+}
+
+async function loadSharePeople(listId) {
+  var container = document.getElementById('sharePeopleList');
+  if (container) container.innerHTML = '<div class="share-people-empty">Loading…</div>';
+  try {
+    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/shares');
+    if (!res.ok) throw new Error('failed');
+    var data = await res.json();
+    renderSharePeople(data);
+    showSharePeopleError('');
+  } catch (err) {
+    console.error(err);
+    if (container) container.innerHTML = '<div class="share-people-empty">Could not load people.</div>';
+  }
+}
+
 async function openShareModal(listId) {
   var id = listId || currentListId;
   if (!id) return;
   var list = userLists.find(function(l) { return l.id === id; });
   if (!list) return;
 
+  shareModalListId = id;
   document.getElementById('shareModalTitle').textContent = 'Share "' + list.name + '"';
   document.getElementById('shareLinksLoading').style.display = '';
   document.getElementById('shareLinksContent').classList.add('hidden');
   document.getElementById('shareCopiedMsg').classList.add('hidden');
+  showSharePeopleError('');
+  var emailInput = document.getElementById('shareEmailInput');
+  if (emailInput) emailInput.value = '';
   document.getElementById('shareModal').classList.remove('hidden');
+
+  loadSharePeople(id);
 
   try {
     var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(id) + '/share-links', {
@@ -752,11 +949,66 @@ async function openShareModal(listId) {
 
 function closeShareModal() {
   document.getElementById('shareModal').classList.add('hidden');
+  shareModalListId = null;
 }
 
 document.getElementById('shareModalClose').addEventListener('click', closeShareModal);
 document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
+
+  var removeBtn = e.target.closest('[data-remove-share]');
+  if (removeBtn && shareModalListId) {
+    e.stopPropagation();
+    var shareId = removeBtn.getAttribute('data-remove-share');
+    removeBtn.disabled = true;
+    authFetch(API_BASE + '/lists/' + encodeURIComponent(shareModalListId) + '/shares/' + encodeURIComponent(shareId), {
+      method: 'DELETE'
+    }).then(function(res) {
+      if (!res.ok) throw new Error('failed');
+      return loadSharePeople(shareModalListId);
+    }).catch(function(err) {
+      console.error(err);
+      showSharePeopleError('Could not remove access.');
+      removeBtn.disabled = false;
+    });
+    return;
+  }
+});
+
+document.getElementById('shareAddPersonBtn').addEventListener('click', async function() {
+  if (!shareModalListId) return;
+  var input = document.getElementById('shareEmailInput');
+  var roleSelect = document.getElementById('shareRoleSelect');
+  var btn = document.getElementById('shareAddPersonBtn');
+  var email = (input && input.value || '').trim();
+  if (!email) {
+    showSharePeopleError('Enter an email address.');
+    return;
+  }
+  btn.disabled = true;
+  showSharePeopleError('');
+  try {
+    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(shareModalListId) + '/shares', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, role: roleSelect ? roleSelect.value : 'viewer' })
+    });
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) throw new Error(data.error || 'Failed to add person');
+    if (input) input.value = '';
+    await loadSharePeople(shareModalListId);
+  } catch (err) {
+    console.error(err);
+    showSharePeopleError(err.message || 'Could not add person.');
+  }
+  btn.disabled = false;
+});
+
+document.getElementById('shareEmailInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.getElementById('shareAddPersonBtn').click();
+  }
 });
 
 function showCopiedMsg() {
@@ -772,6 +1024,161 @@ document.getElementById('copyViewLink').addEventListener('click', function() {
 document.getElementById('copyEditLink').addEventListener('click', function() {
   navigator.clipboard.writeText(shareEditURL).then(showCopiedMsg);
 });
+
+(function initListParcelPointerReorder() {
+  var container = document.getElementById('listParcels');
+  if (!container) return;
+
+  var active = null;
+
+  function getDragAfterElement(y) {
+    var items = container.querySelectorAll('.parcel-list-item:not(.parcel-list-dragging)');
+    var closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    for (var i = 0; i < items.length; i++) {
+      var child = items[i];
+      var box = child.getBoundingClientRect();
+      var offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        closest = { offset: offset, element: child };
+      }
+    }
+    return closest.element;
+  }
+
+  function positionFloatingItem(clientY) {
+    if (!active) return;
+    var containerRect = container.getBoundingClientRect();
+    var item = active.item;
+    item.style.top = (clientY - containerRect.top - active.grabOffsetY) + 'px';
+  }
+
+  function movePlaceholderToPointer(clientY) {
+    if (!active) return;
+    var placeholder = active.placeholder;
+    var after = getDragAfterElement(clientY);
+    if (!after) container.appendChild(placeholder);
+    else container.insertBefore(placeholder, after);
+  }
+
+  function stopDocumentDragListeners() {
+    document.removeEventListener('pointermove', onDocumentPointerMove);
+    document.removeEventListener('pointerup', onDocumentPointerEnd);
+    document.removeEventListener('pointercancel', onDocumentPointerEnd);
+  }
+
+  function clearActive() {
+    if (!active) return;
+    stopDocumentDragListeners();
+    var item = active.item;
+    var placeholder = active.placeholder;
+    item.classList.remove('parcel-list-dragging');
+    item.style.position = '';
+    item.style.left = '';
+    item.style.top = '';
+    item.style.width = '';
+    item.style.zIndex = '';
+    item.style.margin = '';
+    item.style.pointerEvents = '';
+    if (placeholder && placeholder.parentNode) {
+      container.insertBefore(item, placeholder);
+      placeholder.remove();
+    }
+    container.classList.remove('parcel-list-reordering');
+    active = null;
+    listParcelDragId = null;
+    listNoteSuppressNavigation = false;
+  }
+
+  function finishActive() {
+    if (!active) return;
+    var item = active.item;
+    var placeholder = active.placeholder;
+    var parcelId = item.getAttribute('data-parcel-id');
+    var startIndex = active.startIndex;
+    clearActive();
+    if (!placeholder || !parcelId) return;
+    var endIndex = getListParcelOrderIds().indexOf(parcelId);
+    if (startIndex === endIndex) return;
+    persistListParcelOrder().then(function(ok) {
+      if (ok) {
+        flashListParcelItem(parcelId);
+        showListOrderSavedFeedback();
+      }
+    });
+  }
+
+  function autoScrollForPointer(clientY) {
+    var scrollParent = document.getElementById('viewListParcels');
+    if (!scrollParent) return;
+    var rect = scrollParent.getBoundingClientRect();
+    var margin = 56;
+    if (clientY < rect.top + margin) scrollParent.scrollTop -= 14;
+    else if (clientY > rect.bottom - margin) scrollParent.scrollTop += 14;
+  }
+
+  function onDocumentPointerMove(e) {
+    if (!active || e.pointerId !== active.pointerId) return;
+    e.preventDefault();
+    active.lastClientY = e.clientY;
+    autoScrollForPointer(e.clientY);
+    movePlaceholderToPointer(e.clientY);
+    positionFloatingItem(e.clientY);
+  }
+
+  function onDocumentPointerEnd(e) {
+    if (!active || e.pointerId !== active.pointerId) return;
+    if (e.type === 'pointercancel') {
+      var startIndex = active.startIndex;
+      var placeholder = active.placeholder;
+      var items = container.querySelectorAll('.parcel-list-item:not(.parcel-list-dragging)');
+      if (startIndex >= items.length) container.appendChild(placeholder);
+      else container.insertBefore(placeholder, items[startIndex]);
+      clearActive();
+      return;
+    }
+    finishActive();
+  }
+
+  container.addEventListener('pointerdown', function(e) {
+    if (!e.target.closest('[data-drag-handle]')) return;
+    var item = e.target.closest('.parcel-list-item');
+    if (!item || active) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    var containerRect = container.getBoundingClientRect();
+    var rect = item.getBoundingClientRect();
+    var placeholder = document.createElement('div');
+    placeholder.className = 'parcel-list-drag-placeholder';
+    placeholder.style.height = rect.height + 'px';
+    container.insertBefore(placeholder, item);
+
+    item.classList.add('parcel-list-dragging');
+    item.style.position = 'absolute';
+    item.style.left = (rect.left - containerRect.left) + 'px';
+    item.style.top = (rect.top - containerRect.top) + 'px';
+    item.style.width = rect.width + 'px';
+    item.style.zIndex = '1200';
+    item.style.pointerEvents = 'none';
+    item.style.margin = '0';
+
+    active = {
+      item: item,
+      placeholder: placeholder,
+      pointerId: e.pointerId,
+      grabOffsetY: e.clientY - rect.top,
+      lastClientY: e.clientY,
+      startIndex: getListParcelOrderIds().indexOf(item.getAttribute('data-parcel-id'))
+    };
+    listParcelDragId = item.getAttribute('data-parcel-id');
+    listNoteSuppressNavigation = true;
+    container.classList.add('parcel-list-reordering');
+
+    document.addEventListener('pointermove', onDocumentPointerMove);
+    document.addEventListener('pointerup', onDocumentPointerEnd);
+    document.addEventListener('pointercancel', onDocumentPointerEnd);
+  });
+})();
 
 // --- Join shared list (requires auth) ---
 
