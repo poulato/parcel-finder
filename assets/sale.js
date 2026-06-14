@@ -674,7 +674,8 @@ function goToParcelSearch(sheet, plan, parcel, dist, municipality) {
   document.getElementById('plan').value = plan;
   document.getElementById('parcel').value = parcel;
   document.getElementById('district').value = dist || '';
-  _searchMunicipality = municipality || null;
+  if (typeof setMunicipalityByName === 'function') setMunicipalityByName(municipality || null);
+  else _searchMunicipality = municipality || null;
   switchTab('search');
   doSearch();
 }
@@ -715,6 +716,7 @@ function showListingDetail(listing) {
 
 function updateSaleButton(listing) {
   var btn = document.getElementById('detailsSaleBtn');
+  if (!btn) return;
   var label = btn.parentElement.querySelector('.action-label');
   if (listing) {
     btn.classList.add('is-listed');
@@ -751,7 +753,23 @@ async function handleSaleButtonClick() {
   }
 }
 
-document.getElementById('detailsSaleBtn').addEventListener('click', function() {
-  handleSaleButtonClick();
-});
+async function openParcelSaleFromList(item) {
+  if (!item) return;
+  if (!authUser) {
+    handleAuthClick('Sign in to list a parcel for sale');
+    return;
+  }
+  if (typeof prepareParcelFromListItem === 'function') {
+    var ok = await prepareParcelFromListItem(item);
+    if (!ok) return;
+  }
+  await handleSaleButtonClick();
+}
+
+var detailsSaleBtn = document.getElementById('detailsSaleBtn');
+if (detailsSaleBtn) {
+  detailsSaleBtn.addEventListener('click', function() {
+    handleSaleButtonClick();
+  });
+}
 

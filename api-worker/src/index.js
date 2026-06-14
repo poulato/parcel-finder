@@ -25,6 +25,26 @@ function json(data, status = 200, request) {
   });
 }
 
+function parseOwnershipFractionInput(input) {
+  if (!input || !String(input).trim()) return { fraction: null, pct: null };
+  const str = String(input).trim();
+  const m = str.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return { error: "Enter a fraction like 1/2 or 3/4" };
+  const num = Number(m[1]);
+  const den = Number(m[2]);
+  if (!den || den <= 0 || num < 0) return { error: "Invalid fraction" };
+  if (num > den) return { error: "Fraction cannot exceed 1 (use 1/1 for 100%)" };
+  const pct = (num / den) * 100;
+  const gcd = (a, b) => {
+    a = Math.abs(a);
+    b = Math.abs(b);
+    while (b) { const t = b; b = a % b; a = t; }
+    return a;
+  };
+  const g = gcd(num, den);
+  return { fraction: `${num / g}/${den / g}`, pct };
+}
+
 function base64urlDecode(str) {
   str = str.replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
@@ -408,7 +428,7 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, quarter, planning_zone, planning_zone_desc,
-                block_code, note, created_at
+                block_code, note, photo_keys, area_sqm, ownership_pct, ownership_fraction, parcel_title, location_note, created_at
          FROM saved_parcels
          WHERE list_id = ?
          ORDER BY datetime(created_at) DESC`
@@ -482,7 +502,8 @@ export default {
       const norm = s => s ? s.replace(/\.0$/, '') : s;
 
       const { results } = await env.DB.prepare(
-        `SELECT DISTINCT p.list_id FROM saved_parcels p
+        `SELECT p.id, p.list_id, p.note, p.photo_keys, p.area_sqm, p.ownership_pct, p.ownership_fraction, p.parcel_title, p.location_note, l.name AS list_name
+         FROM saved_parcels p
          JOIN lists l ON l.id = p.list_id
          LEFT JOIN list_shares s ON s.list_id = l.id AND LOWER(s.email) = LOWER(?)
          WHERE (l.user_id = ? OR s.id IS NOT NULL)
@@ -492,7 +513,7 @@ export default {
          AND IFNULL(p.dist_code, -1) = ?`
       ).bind(user.email, user.id, norm(sheet), norm(plan), norm(parcel), distVal).all();
 
-      return json((results || []).map(r => r.list_id));
+      return json(results || []);
     }
 
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "PATCH") {
@@ -505,7 +526,38 @@ export default {
       if (!body) return json({ error: "Invalid body" }, 400);
 
       const note = body.note !== undefined ? (body.note || null) : undefined;
-      if (note === undefined) return json({ error: "Nothing to update" }, 400);
+      const photoKeys = body.photo_keys !== undefined
+        ? (body.photo_keys ? JSON.stringify(body.photo_keys) : null)
+        : undefined;
+      const areaSqm = body.area_sqm !== undefined
+        ? (body.area_sqm === null || body.area_sqm === '' ? null : Number(body.area_sqm))
+        : undefined;
+      const ownershipFraction = body.ownership_fraction !== undefined
+        ? (body.ownership_fraction ? String(body.ownership_fraction).trim() : null)
+        : undefined;
+      let ownershipParsed = undefined;
+      if (ownershipFraction !== undefined) {
+        ownershipParsed = parseOwnershipFractionInput(ownershipFraction || "");
+        if (ownershipParsed.error) return json({ error: ownershipParsed.error }, 400);
+      }
+      const locationNote = body.location_note !== undefined
+        ? (body.location_note ? String(body.location_note).trim() || null : null)
+        : undefined;
+      const parcelTitle = body.parcel_title !== undefined
+        ? (body.parcel_title ? String(body.parcel_title).trim() || null : null)
+        : undefined;
+      if (note === undefined && photoKeys === undefined && areaSqm === undefined && ownershipParsed === undefined && locationNote === undefined && parcelTitle === undefined) {
+        return json({ error: "Nothing to update" }, 400);
+      }
+      if (areaSqm !== undefined && areaSqm !== null && (isNaN(areaSqm) || areaSqm < 0)) {
+        return json({ error: "Area must be a positive number" }, 400);
+      }
+      if (locationNote !== undefined && locationNote && locationNote.length > 500) {
+        return json({ error: "Location must be 500 characters or less" }, 400);
+      }
+      if (parcelTitle !== undefined && parcelTitle && parcelTitle.length > 120) {
+        return json({ error: "Title must be 120 characters or less" }, 400);
+      }
 
       const parcel = await env.DB.prepare(
         `SELECT list_id FROM saved_parcels WHERE id = ?`
@@ -517,11 +569,50 @@ export default {
         return json({ error: "Not authorized" }, 403);
       }
 
+      const updates = [];
+      const binds = [];
+      if (note !== undefined) {
+        updates.push("note = ?");
+        binds.push(note);
+      }
+      if (photoKeys !== undefined) {
+        updates.push("photo_keys = ?");
+        binds.push(photoKeys);
+      }
+      if (areaSqm !== undefined) {
+        updates.push("area_sqm = ?");
+        binds.push(areaSqm);
+      }
+      if (ownershipParsed !== undefined) {
+        updates.push("ownership_fraction = ?");
+        binds.push(ownershipParsed.fraction);
+        updates.push("ownership_pct = ?");
+        binds.push(ownershipParsed.pct);
+      }
+      if (locationNote !== undefined) {
+        updates.push("location_note = ?");
+        binds.push(locationNote);
+      }
+      if (parcelTitle !== undefined) {
+        updates.push("parcel_title = ?");
+        binds.push(parcelTitle);
+      }
+      binds.push(id);
       await env.DB.prepare(
-        `UPDATE saved_parcels SET note = ? WHERE id = ?`
-      ).bind(note, id).run();
+        `UPDATE saved_parcels SET ${updates.join(", ")} WHERE id = ?`
+      ).bind(...binds).run();
 
-      return json({ ok: true, note });
+      const result = { ok: true };
+      if (note !== undefined) result.note = note;
+      if (photoKeys !== undefined) result.photo_keys = body.photo_keys || [];
+      if (areaSqm !== undefined) result.area_sqm = areaSqm;
+      if (ownershipParsed !== undefined) {
+        result.ownership_fraction = ownershipParsed.fraction;
+        result.ownership_pct = ownershipParsed.pct;
+      }
+      if (locationNote !== undefined) result.location_note = locationNote;
+      if (parcelTitle !== undefined) result.parcel_title = parcelTitle;
+      return json(result);
     }
 
     if (path.match(/^\/api\/parcels\/[^/]+$/) && request.method === "DELETE") {

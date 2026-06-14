@@ -3,12 +3,99 @@ var sharedLists = [];
 var currentListId = null;
 var currentListRole = null;
 var currentListParcels = [];
+var parcelDetailsFromList = false;
+
+function isParcelDetailsFromList() {
+  return parcelDetailsFromList;
+}
+
+function resetSearchBarDisplay() {
+  var searchBarEl = document.getElementById('searchBar');
+  var searchBarTextEl = document.getElementById('searchBarText');
+  if (searchBarEl && searchBarTextEl) {
+    searchBarTextEl.textContent = 'Search parcels';
+    searchBarEl.classList.remove('has-result');
+    searchBarEl.classList.remove('loading');
+  }
+}
+
+function enterParcelDetailsFromList() {
+  parcelDetailsFromList = true;
+  var btn = document.getElementById('backToListParcels');
+  if (btn) btn.classList.remove('hidden');
+  resetSearchBarDisplay();
+}
+
+function leaveParcelDetailsFromList() {
+  parcelDetailsFromList = false;
+  var btn = document.getElementById('backToListParcels');
+  if (btn) btn.classList.add('hidden');
+}
+
+function highlightListNav() {
+  document.querySelectorAll('.sidebar-tab').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-tab') === 'list');
+  });
+  if (typeof isMobile === 'function' && isMobile()) {
+    document.querySelectorAll('.bottom-tab').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === 'list');
+    });
+  } else {
+    document.querySelectorAll('.rail-btn').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === 'list');
+    });
+  }
+}
 var pendingShareToken = null;
 
 function escapeHTML(str) {
   var div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function parseParcelPhotos(item) {
+  if (!item || !item.photo_keys) return [];
+  if (Array.isArray(item.photo_keys)) return item.photo_keys;
+  try { return JSON.parse(item.photo_keys); } catch (e) { return []; }
+}
+
+function renderListParcelPhotosHTML(photos) {
+  if (!photos.length) return '';
+  var srcs = photos.map(function(k) {
+    return API_BASE.replace('/api', '') + '/api/images/' + encodeURIComponent(k);
+  });
+  var srcsJSON = escapeHTML(JSON.stringify(srcs));
+  return (
+    '<div class="parcel-list-photos-readonly">' +
+      photos.map(function(k, i) {
+        return '<img class="parcel-list-photo-thumb" src="' + srcs[i] + '" alt="" data-photo-src="' + srcs[i] + '" data-all-photos=\'' + srcsJSON + '\' />';
+      }).join('') +
+    '</div>'
+  );
+}
+
+function refreshListParcelPhotos(parcelId) {
+  var item = currentListParcels.find(function(x) { return x.id === parcelId; });
+  if (!item) return;
+  var listEl = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!listEl) return;
+  var info = listEl.querySelector('.parcel-list-info');
+  if (!info) return;
+  var photos = parseParcelPhotos(item);
+  var old = info.querySelector('.parcel-list-photos-readonly');
+  var html = renderListParcelPhotosHTML(photos);
+  if (!html) {
+    if (old) old.remove();
+    return;
+  }
+  if (old) {
+    old.outerHTML = html;
+  } else {
+    var temp = document.createElement('div');
+    temp.innerHTML = html;
+    info.appendChild(temp.firstElementChild);
+  }
 }
 
 function renderLists() {
@@ -40,6 +127,10 @@ function renderLists() {
             '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
           '</button>' +
           '<div class="lists-menu-dropdown hidden" data-dropdown-list="' + list.id + '">' +
+            '<button data-share-list="' + list.id + '">' +
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+              ' Share' +
+            '</button>' +
             '<button class="menu-danger" data-delete-list="' + list.id + '">' +
               '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
               ' Delete' +
@@ -145,6 +236,14 @@ document.getElementById('listsContainer').addEventListener('click', function(e) 
     return;
   }
 
+  var shareBtn = e.target.closest('[data-share-list]');
+  if (shareBtn) {
+    e.stopPropagation();
+    closeAllListMenus();
+    openShareModal(shareBtn.getAttribute('data-share-list'));
+    return;
+  }
+
   var item = e.target.closest('[data-list-id]');
   if (item) {
     var role = item.getAttribute('data-list-role') || 'owner';
@@ -187,9 +286,7 @@ async function openListParcels(listId, role) {
   currentListParcels = [];
 
   var detailMenu = document.querySelector('.list-detail-menu');
-  var shareBtn = document.getElementById('shareListBtn');
   if (detailMenu) detailMenu.style.display = isOwner ? '' : 'none';
-  if (shareBtn) shareBtn.style.display = isOwner ? '' : 'none';
 
   switchTab('listParcels');
 
@@ -211,136 +308,166 @@ async function openListParcels(listId, role) {
   }
 }
 
+function notePreviewSingleLine(text) {
+  if (!text) return '';
+  return String(text).trim().replace(/\s+/g, ' ');
+}
+
+function buildListNoteLineInnerHTML(note) {
+  var val = notePreviewSingleLine(note);
+  if (val) {
+    return '<span class="parcel-list-note-line-text">' + escapeHTML(val) + '</span>';
+  }
+  return '<span class="parcel-list-note-line-placeholder">Write a note…</span>';
+}
+
+var listNoteSuppressNavigation = false;
+
+function getExpandedListNoteId() {
+  var expanded = document.querySelector('.parcel-list-note-wrap.expanded [data-autosave-note]');
+  return expanded ? expanded.getAttribute('data-autosave-note') : null;
+}
+
+function finishListNoteEdit(parcelId, save) {
+  var item = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!item) return;
+  var wrap = item.querySelector('.parcel-list-note-wrap');
+  if (!wrap || !wrap.classList.contains('expanded')) return;
+  var textarea = wrap.querySelector('[data-autosave-note]');
+  if (save && textarea && typeof flushParcelNoteAutosave === 'function') {
+    flushParcelNoteAutosave(parcelId, textarea.value);
+  }
+  closeListNoteEditor(parcelId);
+  listNoteSuppressNavigation = true;
+  setTimeout(function() { listNoteSuppressNavigation = false; }, 400);
+}
+
+function onListNoteOutsidePointerDown(e) {
+  var expandedId = getExpandedListNoteId();
+  if (!expandedId) return;
+  if (e.target.closest('[data-autosave-note="' + expandedId + '"]')) return;
+  finishListNoteEdit(expandedId, true);
+}
+
+document.addEventListener('mousedown', onListNoteOutsidePointerDown, true);
+document.addEventListener('touchstart', onListNoteOutsidePointerDown, true);
+
+function openListNoteEditor(parcelId) {
+  var item = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!item) return;
+  var wrap = item.querySelector('.parcel-list-note-wrap');
+  if (!wrap || wrap.classList.contains('expanded')) return;
+  var line = wrap.querySelector('[data-note-open]');
+  var textarea = wrap.querySelector('[data-autosave-note]');
+  if (!line || !textarea) return;
+  var p = currentListParcels.find(function(x) { return x.id === parcelId; });
+  textarea.value = p ? (p.note || '') : '';
+  line.classList.add('hidden');
+  textarea.removeAttribute('hidden');
+  wrap.classList.add('expanded');
+  resizeListNoteInput(textarea);
+  textarea.focus();
+}
+
+function closeListNoteEditor(parcelId) {
+  var item = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!item) return;
+  var wrap = item.querySelector('.parcel-list-note-wrap');
+  if (!wrap) return;
+  var line = wrap.querySelector('[data-note-open]');
+  var textarea = wrap.querySelector('[data-autosave-note]');
+  if (!line || !textarea) return;
+  line.innerHTML = buildListNoteLineInnerHTML(textarea.value);
+  textarea.setAttribute('hidden', '');
+  textarea.style.height = '';
+  line.classList.remove('hidden');
+  wrap.classList.remove('expanded');
+}
+
+function updateListNoteLinePreview(parcelId, noteVal) {
+  var item = document.querySelector('.parcel-list-item[data-parcel-id="' + parcelId + '"]');
+  if (!item) return;
+  var wrap = item.querySelector('.parcel-list-note-wrap');
+  if (!wrap || wrap.classList.contains('expanded')) return;
+  var line = wrap.querySelector('[data-note-open]');
+  if (!line) return;
+  line.innerHTML = buildListNoteLineInnerHTML(noteVal);
+}
+
 function renderParcelItem(item, canEdit) {
-  var line = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+  var refLine = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+  var titleLine = item.parcel_title
+    ? '<div class="parcel-list-custom-title">' + escapeHTML(item.parcel_title) + '</div>' +
+      '<div class="parcel-list-ref">' + refLine + '</div>'
+    : '<div class="parcel-list-primary-title">' + refLine + '</div>';
   var area = item.municipality || item.district || '\u2014';
+  var areaSqmLine = (item.area_sqm != null && item.area_sqm !== '' && typeof formatAreaSqm === 'function')
+    ? '<div class="parcel-list-area">' + formatAreaSqm(item.area_sqm) + '</div>'
+    : '';
+  var ownershipLine = (typeof formatOwnershipDisplay === 'function' && formatOwnershipDisplay(item))
+    ? '<div class="parcel-list-ownership ' + (typeof isFullOwnership === 'function' && isFullOwnership(item) ? 'parcel-list-ownership-full' : 'parcel-list-ownership-partial') + '">' + escapeHTML(formatOwnershipDisplay(item)) + '</div>'
+    : '';
+  var locationLine = item.location_note
+    ? '<div class="parcel-list-location">' + escapeHTML(item.location_note) + '</div>'
+    : '';
   var data = encodeURIComponent(JSON.stringify({
     sheet: item.sheet, plan_nbr: item.plan_nbr,
     parcel_nbr: item.parcel_nbr, dist_code: item.dist_code
   }));
-  var noteHTML = item.note
-    ? '<div class="parcel-note" data-note-id="' + item.id + '">' +
-        '<span class="parcel-note-text">' + escapeHTML(item.note) + '</span>' +
-      '</div>'
-    : '';
-  var noteLbl = item.note ? 'Edit Note' : 'Add Note';
-  var menuHTML = '';
-  if (canEdit) {
-    menuHTML =
-      '<div class="parcel-item-actions">' +
-        '<button class="parcel-menu-btn" data-parcel-menu="' + item.id + '" title="Options">' +
-          '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
+  var noteHTML = canEdit
+    ? '<div class="parcel-list-note-wrap">' +
+        '<button type="button" class="parcel-list-note-line" data-note-open="' + item.id + '">' +
+          buildListNoteLineInnerHTML(item.note) +
         '</button>' +
-        '<div class="parcel-menu-dropdown hidden" data-parcel-dropdown="' + item.id + '">' +
-          '<button data-add-note="' + item.id + '">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
-            ' ' + noteLbl +
-          '</button>' +
-          '<button class="menu-danger" data-remove-id="' + item.id + '">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
-            ' Remove' +
-          '</button>' +
-        '</div>' +
-      '</div>';
-  }
-  return (
-    '<div class="parcel-list-item" data-goto-parcel="' + data + '">' +
-      '<div class="parcel-list-info">' +
-        '<div>' + line + '</div>' +
-        '<div style="color:#94a3b8;font-size:11px;">' + area + '</div>' +
-        noteHTML +
+        '<textarea class="parcel-list-note-input" data-autosave-note="' + item.id + '" rows="3" placeholder="Write a note…" hidden></textarea>' +
+        '<span class="parcel-note-saved-msg hidden" data-note-saved-msg="' + item.id + '">Saved</span>' +
+      '</div>'
+    : (item.note
+      ? '<div class="parcel-note"><span class="parcel-note-text">' + escapeHTML(item.note) + '</span></div>'
+      : '');
+  var photos = parseParcelPhotos(item);
+  var photosHTML = photos.length ? renderListParcelPhotosHTML(photos) : '';
+  var shareBtnHTML =
+    '<button data-share-parcel="' + item.id + '">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+      ' Share' +
+    '</button>';
+  var editMenuHTML = canEdit
+    ? '<button data-sale-parcel="' + item.id + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+        ' List for sale' +
+      '</button>' +
+      '<button class="menu-danger" data-remove-id="' + item.id + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+        ' Remove' +
+      '</button>'
+    : '';
+  var menuHTML =
+    '<div class="parcel-item-actions">' +
+      '<button class="parcel-menu-btn" data-parcel-menu="' + item.id + '" title="Options">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
+      '</button>' +
+      '<div class="parcel-menu-dropdown hidden" data-parcel-dropdown="' + item.id + '">' +
+        shareBtnHTML +
+        editMenuHTML +
       '</div>' +
-      menuHTML +
+    '</div>';
+  return (
+    '<div class="parcel-list-item" data-parcel-id="' + item.id + '">' +
+      '<div class="parcel-list-item-row" data-goto-parcel="' + data + '">' +
+        '<div class="parcel-list-info">' +
+          titleLine +
+          '<div style="color:#94a3b8;font-size:11px;">' + area + '</div>' +
+          areaSqmLine +
+          ownershipLine +
+          locationLine +
+          photosHTML +
+        '</div>' +
+        menuHTML +
+      '</div>' +
+      noteHTML +
     '</div>'
   );
-}
-
-function openNoteEditor(parcelId, existingNote) {
-  var container = document.getElementById('listParcels');
-  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
-  if (!item) return;
-  var listItem = item.closest('.parcel-list-item');
-  var info = listItem.querySelector('.parcel-list-info');
-
-  var existing = info.querySelector('.parcel-note-editor');
-  if (existing) return;
-
-  var oldNote = info.querySelector('.parcel-note');
-  if (oldNote) oldNote.style.display = 'none';
-
-  var editor = document.createElement('div');
-  editor.className = 'parcel-note-editor';
-  editor.innerHTML =
-    '<textarea class="parcel-note-input" placeholder="Add a note..." rows="2">' + escapeHTML(existingNote || '') + '</textarea>' +
-    '<div class="parcel-note-editor-actions">' +
-      '<button class="note-save-btn" data-save-note="' + parcelId + '">Save</button>' +
-      '<button class="note-cancel-btn" data-cancel-note="' + parcelId + '">Cancel</button>' +
-    '</div>';
-  info.appendChild(editor);
-
-  var textarea = editor.querySelector('textarea');
-  textarea.addEventListener('click', function(ev) { ev.stopPropagation(); });
-  textarea.focus();
-}
-
-async function saveNote(parcelId) {
-  var container = document.getElementById('listParcels');
-  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
-  if (!item) return;
-  var listItem = item.closest('.parcel-list-item');
-  var editor = listItem.querySelector('.parcel-note-editor');
-  if (!editor) return;
-
-  var noteText = editor.querySelector('textarea').value.trim();
-  try {
-    var res = await authFetch(API_BASE + '/parcels/' + encodeURIComponent(parcelId), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: noteText })
-    });
-    if (!res.ok) throw new Error('failed to save note');
-
-    var p = currentListParcels.find(function(x) { return x.id === parcelId; });
-    if (p) p.note = noteText || null;
-
-    editor.remove();
-
-    var info = listItem.querySelector('.parcel-list-info');
-    var oldNote = info.querySelector('.parcel-note');
-    var dropdownNoteBtn = listItem.querySelector('[data-add-note="' + parcelId + '"]');
-
-    if (noteText) {
-      if (oldNote) {
-        oldNote.querySelector('.parcel-note-text').textContent = noteText;
-        oldNote.style.display = '';
-      } else {
-        var noteDiv = document.createElement('div');
-        noteDiv.className = 'parcel-note';
-        noteDiv.setAttribute('data-note-id', parcelId);
-        noteDiv.innerHTML = '<span class="parcel-note-text">' + escapeHTML(noteText) + '</span>';
-        info.appendChild(noteDiv);
-      }
-      if (dropdownNoteBtn) dropdownNoteBtn.lastChild.textContent = ' Edit Note';
-    } else {
-      if (oldNote) oldNote.remove();
-      if (dropdownNoteBtn) dropdownNoteBtn.lastChild.textContent = ' Add Note';
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-function cancelNoteEditor(parcelId) {
-  var container = document.getElementById('listParcels');
-  var item = container.querySelector('[data-remove-id="' + parcelId + '"]');
-  if (!item) return;
-  var listItem = item.closest('.parcel-list-item');
-  var editor = listItem.querySelector('.parcel-note-editor');
-  if (editor) editor.remove();
-
-  var info = listItem.querySelector('.parcel-list-info');
-  var oldNote = info.querySelector('.parcel-note');
-  if (oldNote) oldNote.style.display = '';
 }
 
 function closeAllParcelMenus() {
@@ -349,7 +476,41 @@ function closeAllParcelMenus() {
   });
 }
 
+document.getElementById('listParcels').addEventListener('input', function(e) {
+  var el = e.target.closest('[data-autosave-note]');
+  if (!el) return;
+  e.stopPropagation();
+  if (el.closest('.parcel-list-note-wrap.expanded')) resizeListNoteInput(el);
+  if (typeof scheduleParcelNoteAutosave === 'function') {
+    scheduleParcelNoteAutosave(el.getAttribute('data-autosave-note'), el.value);
+  }
+});
+
+document.getElementById('listParcels').addEventListener('blur', function(e) {
+  var el = e.target.closest('[data-autosave-note]');
+  if (!el) return;
+  var wrap = el.closest('.parcel-list-note-wrap');
+  if (!wrap || !wrap.classList.contains('expanded')) return;
+  finishListNoteEdit(el.getAttribute('data-autosave-note'), true);
+}, true);
+
+function resizeListNoteInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.max(36, el.scrollHeight) + 'px';
+}
+
 document.getElementById('listParcels').addEventListener('click', async function(e) {
+  var noteOpen = e.target.closest('[data-note-open]');
+  if (noteOpen) {
+    e.stopPropagation();
+    openListNoteEditor(noteOpen.getAttribute('data-note-open'));
+    return;
+  }
+  if (e.target.closest('[data-autosave-note]')) {
+    e.stopPropagation();
+    return;
+  }
+
   var menuBtn = e.target.closest('[data-parcel-menu]');
   if (menuBtn) {
     e.stopPropagation();
@@ -361,33 +522,43 @@ document.getElementById('listParcels').addEventListener('click', async function(
     return;
   }
 
-  var saveBtn = e.target.closest('[data-save-note]');
-  if (saveBtn) {
+  if (e.target.closest('.parcel-list-photos-readonly, .parcel-list-photo-thumb')) {
     e.stopPropagation();
-    saveNote(saveBtn.getAttribute('data-save-note'));
+  }
+
+  var photoThumb = e.target.closest('.parcel-list-photo-thumb, .parcel-photo-thumb');
+  if (photoThumb) {
+    e.stopPropagation();
+    if (typeof openLightbox === 'function') {
+      openLightbox(
+        photoThumb.getAttribute('data-photo-src'),
+        JSON.parse(photoThumb.getAttribute('data-all-photos'))
+      );
+    }
     return;
   }
 
-  var cancelBtn = e.target.closest('[data-cancel-note]');
-  if (cancelBtn) {
-    e.stopPropagation();
-    cancelNoteEditor(cancelBtn.getAttribute('data-cancel-note'));
-    return;
-  }
-
-  var addNoteBtn = e.target.closest('[data-add-note]');
-  if (addNoteBtn) {
+  var parcelShareBtn = e.target.closest('[data-share-parcel]');
+  if (parcelShareBtn) {
     e.stopPropagation();
     closeAllParcelMenus();
-    var noteId = addNoteBtn.getAttribute('data-add-note');
-    var p = currentListParcels.find(function(x) { return x.id === noteId; });
-    openNoteEditor(noteId, p ? p.note || '' : '');
+    var shareParcelId = parcelShareBtn.getAttribute('data-share-parcel');
+    var shareItem = currentListParcels.find(function(x) { return x.id === shareParcelId; });
+    if (shareItem && typeof shareParcelFromList === 'function') {
+      shareParcelFromList(shareItem);
+    }
     return;
   }
 
-  var noteEl = e.target.closest('[data-note-id]');
-  if (noteEl) {
+  var parcelSaleBtn = e.target.closest('[data-sale-parcel]');
+  if (parcelSaleBtn) {
     e.stopPropagation();
+    closeAllParcelMenus();
+    var saleParcelId = parcelSaleBtn.getAttribute('data-sale-parcel');
+    var saleItem = currentListParcels.find(function(x) { return x.id === saleParcelId; });
+    if (saleItem && typeof openParcelSaleFromList === 'function') {
+      openParcelSaleFromList(saleItem);
+    }
     return;
   }
 
@@ -414,19 +585,41 @@ document.getElementById('listParcels').addEventListener('click', async function(
 
   var parcelItem = e.target.closest('[data-goto-parcel]');
   if (parcelItem) {
+    if (listNoteSuppressNavigation) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    e.stopPropagation();
+    var listItemEl = parcelItem.closest('.parcel-list-item');
+    var parcelId = listItemEl ? listItemEl.getAttribute('data-parcel-id') : null;
+    var saved = parcelId
+      ? currentListParcels.find(function(x) { return x.id === parcelId; })
+      : null;
+    if (saved) {
+      openSavedParcelFromList(saved);
+      return;
+    }
     var parcelData = JSON.parse(decodeURIComponent(parcelItem.getAttribute('data-goto-parcel')));
-    _skipTabSwitch = true;
     navigateToParcel(parcelData.sheet, parcelData.plan_nbr, parcelData.parcel_nbr, parcelData.dist_code);
   }
 });
 
 document.getElementById('backToLists').addEventListener('click', function() {
+  leaveParcelDetailsFromList();
   currentListId = null;
   currentListRole = null;
   currentListParcels = [];
   clearListParcels();
   history.replaceState(null, '', window.location.pathname);
   switchTab('list');
+});
+
+document.getElementById('backToListParcels').addEventListener('click', function() {
+  leaveParcelDetailsFromList();
+  switchTab('listParcels');
+  highlightListNav();
+  if (typeof openSidebar === 'function') openSidebar();
 });
 
 document.getElementById('showAllParcelsBtn').addEventListener('click', function() {
@@ -446,7 +639,11 @@ function startRename() {
   renameSkipBlur = true;
   var titleEl = document.getElementById('listParcelsTitle');
   var renameInput = document.getElementById('listParcelsRename');
-  renameInput.value = titleEl.textContent;
+  var list = userLists.find(function(l) { return l.id === currentListId; })
+    || sharedLists.find(function(l) { return l.id === currentListId; });
+  var currentName = (titleEl && titleEl.textContent.trim()) || (list && list.name) || '';
+  renameInput.value = currentName;
+  renameInput.setAttribute('value', currentName);
   titleEl.style.display = 'none';
   renameInput.classList.remove('hidden');
   setTimeout(function() {
@@ -521,9 +718,10 @@ function buildShareURL(token) {
   return window.location.origin + window.location.pathname + '?share=' + token;
 }
 
-async function openShareModal() {
-  if (!currentListId) return;
-  var list = userLists.find(function(l) { return l.id === currentListId; });
+async function openShareModal(listId) {
+  var id = listId || currentListId;
+  if (!id) return;
+  var list = userLists.find(function(l) { return l.id === id; });
   if (!list) return;
 
   document.getElementById('shareModalTitle').textContent = 'Share "' + list.name + '"';
@@ -533,7 +731,7 @@ async function openShareModal() {
   document.getElementById('shareModal').classList.remove('hidden');
 
   try {
-    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(currentListId) + '/share-links', {
+    var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(id) + '/share-links', {
       method: 'POST'
     });
     if (!res.ok) throw new Error('failed');

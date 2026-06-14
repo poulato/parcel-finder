@@ -80,6 +80,10 @@ function handleSearchBarClear() {
     document.getElementById('backToSaleList').click();
     return;
   }
+  if (typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()) {
+    document.getElementById('backToListParcels').click();
+    return;
+  }
   doClear();
   openSearchPanel();
 }
@@ -156,11 +160,8 @@ document.querySelectorAll('.bottom-tab').forEach(function(btn) {
 // --- Rail buttons (desktop) ---
 document.querySelectorAll('.rail-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
+    if (this.id === 'railListBtn') return;
     handleTabClick(this.getAttribute('data-tab'), this, false);
-    switchTab(effectiveTab);
-    document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
-    this.classList.add('active');
-    if (!isOpen) openSidebar();
   });
 });
 
@@ -285,8 +286,7 @@ document.getElementById('bottomListBtn').addEventListener('click', function() {
 });
 
 var _urlTabParam = new URLSearchParams(window.location.search).get('tab');
-if (_urlTabParam && _urlTabParam !== 'search') { _skipTabSwitch = true; }
-loadFromURL();
+loadMunicipalities().then(loadFromURL);
 
 (function() {
   var tabParam = _urlTabParam;

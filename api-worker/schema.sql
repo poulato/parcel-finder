@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS saved_parcels (
   planning_zone_desc TEXT,
   block_code TEXT,
   note TEXT,
+  photo_keys TEXT,
+  area_sqm REAL,
+  ownership_pct REAL,
+  ownership_fraction TEXT,
+  parcel_title TEXT,
+  location_note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
