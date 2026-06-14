@@ -484,6 +484,16 @@ function buildParcelHTML(attrs, extra) {
         '<button type="button" id="parcelTitleCancelBtn" class="note-cancel-btn">Cancel</button>' +
       '</div>' +
     '</div>' +
+    '<div class="parcel-external-links">' +
+      '<button type="button" id="parcelOpenDlsBtn" class="parcel-external-btn">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>' +
+        ' Open in DLS' +
+      '</button>' +
+      '<button type="button" id="parcelOpenGmapsBtn" class="parcel-external-btn">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' +
+        ' Google Maps' +
+      '</button>' +
+    '</div>' +
     '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
     quarterRow +
@@ -541,6 +551,33 @@ function buildParcelHTML(attrs, extra) {
         '<span id="parcelNoteSavedMsg" class="parcel-note-saved-msg hidden">Saved</span>' +
       '</div>' +
     '</div>';
+}
+
+function openParcelInGoogleMaps() {
+  if (!currentParcel || currentParcel.centroid_lat == null || currentParcel.centroid_lng == null) {
+    if (typeof showError === 'function') showError('No location available for this parcel.');
+    return;
+  }
+  var lat = currentParcel.centroid_lat;
+  var lng = currentParcel.centroid_lng;
+  var url = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
+  window.open(url, '_blank', 'noopener');
+}
+
+function openParcelInDls() {
+  if (!currentParcel || currentParcel.centroid_lat == null || currentParcel.centroid_lng == null) {
+    if (typeof showError === 'function') showError('No location available for this parcel.');
+    return;
+  }
+  var lat = currentParcel.centroid_lat;
+  var lng = currentParcel.centroid_lng;
+  var service = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/CadastralMap_EN/MapServer';
+  var url = 'https://www.arcgis.com/home/webmap/viewer.html' +
+    '?url=' + encodeURIComponent(service) +
+    '&source=sd' +
+    '&center=' + encodeURIComponent(lng + ',' + lat) +
+    '&level=19';
+  window.open(url, '_blank', 'noopener');
 }
 
 function applyParcelOutlineColor(color) {

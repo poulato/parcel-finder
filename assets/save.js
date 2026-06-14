@@ -1105,6 +1105,14 @@ document.getElementById('detailsContent').addEventListener('click', function(e) 
     );
     return;
   }
+  if (e.target.closest('#parcelOpenDlsBtn')) {
+    openParcelInDls();
+    return;
+  }
+  if (e.target.closest('#parcelOpenGmapsBtn')) {
+    openParcelInGoogleMaps();
+    return;
+  }
   if (e.target.closest('#parcelTitleEditBtn') || e.target.closest('#parcelTitleDisplay.parcel-title-editable')) {
     openParcelTitleEditor();
     return;

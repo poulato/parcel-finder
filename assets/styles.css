@@ -1397,6 +1397,33 @@ body {
   margin-bottom: 8px;
 }
 .parcel-title-sub.hidden { display: none; }
+.parcel-external-links {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.parcel-external-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.parcel-external-btn svg { flex-shrink: 0; }
+.parcel-external-btn:hover {
+  color: #4a90d9;
+  border-color: #4a90d9;
+  background: rgba(74, 144, 217, 0.1);
+}
 #parcelTitleDisplay.parcel-title-editable { cursor: pointer; }
 #parcelTitleDisplay.parcel-title-editable:hover { color: #cbd5e1; }
 .saved-parcel-custom-title,
