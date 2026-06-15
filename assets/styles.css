@@ -880,6 +880,52 @@ body {
 .back-btn:hover { color: #f1f5f9; }
 #backToListParcels.hidden { display: none; }
 
+.sidebar-mobile-topbar {
+  display: none;
+}
+.details-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 32px;
+}
+.mobile-panel-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  flex-shrink: 0;
+  min-height: 32px;
+}
+.mobile-panel-toprow .back-btn,
+.details-panel-header .back-btn {
+  margin-bottom: 0;
+}
+.details-panel-header .back-btn.hidden + .mobile-view-close {
+  margin-left: auto;
+}
+.mobile-view-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-view-close:hover { color: #f1f5f9; background: rgba(148, 163, 184, 0.12); }
+
 .list-detail-header {
   display: flex;
   align-items: center;
@@ -1906,7 +1952,9 @@ body {
     bottom: 56px;
     top: auto;
     width: 100%;
+    height: 65vh;
     max-height: 65vh;
+    overflow: hidden;
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0s;
@@ -1914,6 +1962,7 @@ body {
     visibility: visible;
     opacity: 1;
     z-index: 1050;
+    gap: 0;
   }
   #sidebar.hidden {
     transform: translateY(100%);
@@ -1930,6 +1979,9 @@ body {
     flex-shrink: 0;
     cursor: pointer;
   }
+  #sidebar.sidebar-sheet-drag-disabled .sheet-handle {
+    display: none;
+  }
   .sheet-handle::after {
     content: '';
     display: block;
@@ -1941,6 +1993,64 @@ body {
   }
 
   .sidebar-header { display: none; }
+
+  .sidebar-mobile-topbar {
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    margin: -4px 0 4px;
+  }
+  .details-panel-header .mobile-view-close {
+    display: flex;
+  }
+  .mobile-view-close {
+    display: flex;
+  }
+  #viewListParcels .list-detail-header {
+    margin-top: 4px;
+    margin-bottom: 8px;
+  }
+
+  html.sidebar-open body {
+    overflow: hidden;
+  }
+
+  .sidebar-view.active {
+    gap: 8px;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #viewList.active,
+  #viewListParcels.active,
+  #viewDetails.active,
+  #viewSharedList.active {
+    overflow: hidden;
+  }
+
+  #viewSearch.active,
+  #viewSale.active,
+  #viewSaleDetail.active {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .mobile-panel-header {
+    flex-shrink: 0;
+  }
+
+  .sidebar-view-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
 
 /* --- Share modal --- */

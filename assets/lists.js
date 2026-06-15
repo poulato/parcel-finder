@@ -1108,7 +1108,9 @@ document.getElementById('copyEditLink').addEventListener('click', function() {
   }
 
   function autoScrollForPointer(clientY) {
-    var scrollParent = document.getElementById('viewListParcels');
+    var view = document.getElementById('viewListParcels');
+    var scrollParent = view ? view.querySelector('.sidebar-view-scroll') : null;
+    if (!scrollParent) scrollParent = view;
     if (!scrollParent) return;
     var rect = scrollParent.getBoundingClientRect();
     var margin = 56;

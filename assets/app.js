@@ -31,6 +31,7 @@ function switchTab(tabName) {
   document.querySelectorAll('.sidebar-view').forEach(function(view) {
     view.classList.toggle('active', view.id === 'view' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
   });
+  updateSidebarSheetDrag();
   if (tabName === 'sale' && typeof loadSaleListings === 'function') {
     loadSaleListings();
     var sb = document.getElementById('searchBar');
@@ -57,11 +58,26 @@ var backdropEl = document.getElementById('backdrop');
 
 function isMobile() { return window.innerWidth <= 640; }
 
+function isSheetDragDisabled() {
+  return sidebar.classList.contains('sidebar-sheet-drag-disabled');
+}
+
+function updateSidebarSheetDrag() {
+  var active = document.querySelector('.sidebar-view.active');
+  var disable = false;
+  if (active) {
+    var id = active.id;
+    disable = id === 'viewList' || id === 'viewListParcels' || id === 'viewSharedList' || id === 'viewDetails';
+  }
+  sidebar.classList.toggle('sidebar-sheet-drag-disabled', disable);
+}
+
 function closeSidebar() {
   sidebar.classList.add('hidden');
   closeSavePanel();
   backdropEl.classList.remove('visible');
   if (isMobile()) {
+    document.documentElement.classList.remove('sidebar-open');
     document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
   } else {
     document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -71,7 +87,10 @@ function closeSidebar() {
 
 function openSidebar() {
   sidebar.classList.remove('hidden');
-  if (isMobile()) backdropEl.classList.add('visible');
+  if (isMobile()) {
+    backdropEl.classList.add('visible');
+    document.documentElement.classList.add('sidebar-open');
+  }
   setTimeout(function() { map.invalidateSize(); }, 300);
 }
 
@@ -172,7 +191,7 @@ document.querySelectorAll('.rail-btn').forEach(function(btn) {
   var dragging = false;
 
   sidebar.addEventListener('touchstart', function(e) {
-    if (!isMobile() || sidebar.classList.contains('hidden')) return;
+    if (!isMobile() || sidebar.classList.contains('hidden') || isSheetDragDisabled()) return;
     var scrollable = sidebar;
     if (scrollable.scrollTop > 0) return;
     startY = e.touches[0].clientY;
