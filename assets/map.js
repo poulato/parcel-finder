@@ -458,14 +458,15 @@ function formatBlockCode(v) {
   return String(v).replace(/\.0$/, '');
 }
 
-function displayBlockCode(v) {
-  var s = formatBlockCode(v);
-  return s !== '' ? s : '\u2014';
-}
-
 function resolveBlockCode(attrs, savedItem) {
   return formatBlockCode(attrs && attrs.BLCK_CODE) ||
-    (savedItem ? formatBlockCode(savedItem.block_code) : '');
+    (savedItem ? formatBlockCode(savedItem.block_code) : '') ||
+    '0';
+}
+
+function displayBlockCode(v) {
+  var s = formatBlockCode(v);
+  return s !== '' ? s : '0';
 }
 
 function pickFeatureByMunicipality(features, municipality) {
@@ -685,7 +686,7 @@ function showParcel(feature, extra, outlineColor) {
     quarter: extra.quarter || '',
     planning_zone: extra.planning_zone || '',
     planning_zone_desc: extra.planning_zone_desc || '',
-    block_code: formatBlockCode(attrs.BLCK_CODE),
+    block_code: resolveBlockCode(attrs, null),
     postal_code: extra.postal_code || '',
     centroid_lat: parcelCentroid[0],
     centroid_lng: parcelCentroid[1],

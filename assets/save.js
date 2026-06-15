@@ -35,14 +35,7 @@ function parseOwnershipFraction(input) {
   if (!den || den <= 0 || num < 0) return { error: 'Invalid fraction' };
   if (num > den) return { error: 'Fraction cannot exceed 1 (use 1/1 for 100%)' };
   var pct = (num / den) * 100;
-  var gcd = function(a, b) {
-    a = Math.abs(a);
-    b = Math.abs(b);
-    while (b) { var t = b; b = a % b; a = t; }
-    return a;
-  };
-  var g = gcd(num, den);
-  return { fraction: (num / g) + '/' + (den / g), pct: pct };
+  return { fraction: m[1].trim() + '/' + m[2].trim(), pct: pct };
 }
 
 function formatOwnershipDisplay(record) {
