@@ -67,7 +67,7 @@ function updateSidebarSheetDrag() {
   var disable = false;
   if (active) {
     var id = active.id;
-    disable = id === 'viewList' || id === 'viewListParcels' || id === 'viewSharedList' || id === 'viewDetails';
+    disable = id === 'viewSearch' || id === 'viewList' || id === 'viewListParcels' || id === 'viewSharedList' || id === 'viewDetails' || id === 'viewSale' || id === 'viewSaleDetail';
   }
   sidebar.classList.toggle('sidebar-sheet-drag-disabled', disable);
 }
@@ -99,12 +99,18 @@ function handleSearchBarClear() {
     document.getElementById('backToSaleList').click();
     return;
   }
-  if (typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()) {
-    document.getElementById('backToListParcels').click();
-    return;
-  }
   doClear();
-  openSearchPanel();
+  switchTab('search');
+  if (isMobile()) {
+    document.querySelectorAll('.bottom-tab').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === 'search');
+    });
+  } else {
+    document.querySelectorAll('.rail-btn').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === 'search');
+    });
+  }
+  openSidebar();
 }
 
 function openSearchPanel() {

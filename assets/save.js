@@ -247,10 +247,15 @@ function getParcelRefLabel() {
 }
 
 function updateParcelSearchBarTitle(record) {
-  if (typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()) return;
   var searchBarEl = document.getElementById('searchBar');
   var searchBarTextEl = document.getElementById('searchBarText');
   if (!searchBarEl || !searchBarTextEl || !currentParcel) return;
+  if (!record && typeof findListParcelForCurrentParcel === 'function') {
+    record = findListParcelForCurrentParcel();
+  }
+  if (!record && typeof getActiveSavedParcelRecord === 'function') {
+    record = getActiveSavedParcelRecord();
+  }
   searchBarTextEl.textContent = (record && record.parcel_title) ? record.parcel_title : getParcelRefLabel();
   searchBarEl.classList.add('has-result');
 }
@@ -916,6 +921,7 @@ async function checkParcelSaved() {
   } catch (e) { /* silent */ }
   updateSaveButton();
   renderSavedParcelDetails();
+  renderParcelMetaFields();
   if (typeof updateParcelOwnershipAppearance === 'function') updateParcelOwnershipAppearance();
 }
 

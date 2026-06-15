@@ -699,13 +699,28 @@ body {
 }
 .new-list-btn:hover { color: #cbd5e1; border-color: #cbd5e1; }
 #viewSearch { overflow: hidden; }
-#viewDetails { overflow-y: auto; }
+#viewDetails { overflow: hidden; }
 .parcel-ownership-full { color: #3b82f6 !important; }
 .parcel-ownership-partial { color: #ef4444 !important; }
 #viewList { overflow-x: hidden; overflow-y: auto; min-height: 0; }
 #viewListParcels { overflow-x: hidden; overflow-y: auto; min-height: 0; }
-#viewSaleDetail { overflow-y: auto; }
+#viewSale { overflow: hidden; }
+#viewSaleDetail { overflow: hidden; }
 #viewSharedList { overflow-y: auto; }
+#viewSearch .sidebar-view-scroll,
+#viewDetails .sidebar-view-scroll,
+#viewSaleDetail .sidebar-view-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+#viewSale .sidebar-view-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 #parcelListWrap {
   display: flex;
   flex-direction: column;
@@ -1016,6 +1031,10 @@ body {
 .parcel-list-item:hover {
   background: rgba(74, 144, 217, 0.12);
   border-color: rgba(74, 144, 217, 0.5);
+}
+.parcel-list-item.parcel-list-item-map-hover {
+  background: rgba(14, 165, 160, 0.12);
+  border-color: rgba(14, 165, 160, 0.55);
 }
 .parcel-list-item.parcel-list-item-menu-open {
   z-index: 200;
@@ -2023,20 +2042,30 @@ body {
     flex-direction: column;
   }
 
+  #viewSearch.active,
   #viewList.active,
   #viewListParcels.active,
   #viewDetails.active,
-  #viewSharedList.active {
+  #viewSharedList.active,
+  #viewSale.active,
+  #viewSaleDetail.active {
     overflow: hidden;
   }
 
-  #viewSearch.active,
-  #viewSale.active,
-  #viewSaleDetail.active {
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+  #viewSale .sidebar-view-scroll {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  #viewSale .sidebar-view-scroll #saleResults {
+    flex: none;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  #viewSaleDetail .sale-detail-heading {
+    margin-bottom: 8px;
   }
 
   .mobile-panel-header {

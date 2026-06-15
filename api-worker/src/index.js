@@ -623,7 +623,8 @@ export default {
           body.dist_code ?? null, body.district ?? null,
           body.municipality ?? null, body.quarter ?? null,
           body.planning_zone ?? null,
-          body.planning_zone_desc ?? null, body.block_code ?? null,
+          body.planning_zone_desc ?? null,
+          body.block_code != null && body.block_code !== '' ? String(body.block_code) : null,
           sortOrder
         ).run();
       } catch (err) {

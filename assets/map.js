@@ -43,6 +43,8 @@ var MapLocateControl = L.Control.extend({
 var parcelLayer = null;
 var currentParcelOutlineOverride = null;
 var listParcelsGroup = L.layerGroup().addTo(map);
+var listParcelMapLayers = {};
+var listParcelMapHoverId = null;
 var saleMarkersGroup = L.layerGroup().addTo(map);
 var gpsDotMarker = null;
 
@@ -451,6 +453,21 @@ function centroid(rings) {
   return [latSum / n, lngSum / n];
 }
 
+function formatBlockCode(v) {
+  if (v == null || v === '') return '';
+  return String(v).replace(/\.0$/, '');
+}
+
+function displayBlockCode(v) {
+  var s = formatBlockCode(v);
+  return s !== '' ? s : '\u2014';
+}
+
+function resolveBlockCode(attrs, savedItem) {
+  return formatBlockCode(attrs && attrs.BLCK_CODE) ||
+    (savedItem ? formatBlockCode(savedItem.block_code) : '');
+}
+
 function pickFeatureByMunicipality(features, municipality) {
   if (features.length <= 1 || !municipality) return Promise.resolve(features[0]);
   var checks = features.map(function(f) {
@@ -466,9 +483,56 @@ function pickFeatureByMunicipality(features, municipality) {
   });
 }
 
+function vilCodeFromMunicipality(municipality, distCode) {
+  if (!municipality || !municipalityCache.length) return '';
+  var match = municipalityCache.find(function(m) {
+    if (m.name !== municipality) return false;
+    if (distCode && String(m.distCode) !== String(distCode)) return false;
+    return true;
+  });
+  return match ? String(match.vilCode) : '';
+}
+
+function resolveParcelFeature(sheet, plan, parcelNbr, distCode, municipality) {
+  var vilCode = vilCodeFromMunicipality(municipality, distCode);
+  return findParcel(sheet, plan, parcelNbr, distCode, vilCode || undefined).then(function(data) {
+    var features = data.features || [];
+    if (!features.length && vilCode) {
+      return findParcel(sheet, plan, parcelNbr, distCode).then(function(data2) {
+        features = data2.features || [];
+        if (!features.length) return null;
+        if (features.length === 1) return features[0];
+        return pickFeatureByMunicipality(features, municipality);
+      });
+    }
+    if (!features.length) return null;
+    if (features.length === 1) return features[0];
+    return pickFeatureByMunicipality(features, municipality);
+  });
+}
+
 var detailsContentEl = document.getElementById('detailsContent');
 
-function buildParcelHTML(attrs, extra) {
+function buildSearchDetailsActionsHTML() {
+  return '<hr class="details-divider">' +
+    '<div id="detailsActions">' +
+      '<div class="action-item">' +
+        '<button id="detailsAddBtn" type="button" title="Save">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' +
+        '</button>' +
+        '<span class="action-label">Save</span>' +
+      '</div>' +
+      '<div class="action-item">' +
+        '<button id="detailsShareBtn" type="button" title="Share">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+        '</button>' +
+        '<span class="action-label">Share</span>' +
+      '</div>' +
+    '</div>';
+}
+
+function buildParcelHTML(attrs, extra, opts) {
+  opts = opts || {};
   var quarterRow = extra.quarter
     ? '<div><span class="label">Quarter:</span> <span class="value">' + extra.quarter + '</span></div>'
     : '';
@@ -494,12 +558,13 @@ function buildParcelHTML(attrs, extra) {
         ' Google Maps' +
       '</button>' +
     '</div>' +
+    (opts.showActions ? buildSearchDetailsActionsHTML() : '') +
     '<div><span class="label">District:</span> <span class="value">' + extra.district + '</span></div>' +
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
     quarterRow +
     '<div><span class="label">Postal Code:</span> <span class="value">' + extra.postal_code + '</span></div>' +
     '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
-    '<div><span class="label">Block:</span> <span class="value">' + (attrs.BLCK_CODE || '\u2014') + '</span></div>' +
+    '<div><span class="label">Block:</span> <span class="value">' + displayBlockCode(attrs.BLCK_CODE) + '</span></div>' +
     '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
     '<div><span class="label">Zone Detail:</span> <span class="value zone-detail">' + extra.planning_zone_desc + '</span></div>' +
     '<div id="savedParcelExtra" class="saved-parcel-extra"></div>' +
@@ -620,7 +685,7 @@ function showParcel(feature, extra, outlineColor) {
     quarter: extra.quarter || '',
     planning_zone: extra.planning_zone || '',
     planning_zone_desc: extra.planning_zone_desc || '',
-    block_code: attrs.BLCK_CODE || '',
+    block_code: formatBlockCode(attrs.BLCK_CODE),
     postal_code: extra.postal_code || '',
     centroid_lat: parcelCentroid[0],
     centroid_lng: parcelCentroid[1],
@@ -634,7 +699,9 @@ function showParcel(feature, extra, outlineColor) {
     color: c, weight: 4, fillColor: c, fillOpacity: outlineColor ? 0.2 : 0.3
   }).addTo(map);
 
-  var html = buildParcelHTML(attrs, extra);
+  var html = buildParcelHTML(attrs, extra, {
+    showActions: !outlineColor && !(typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList())
+  });
 
   detailsContentEl.innerHTML = html;
   parcelSavedLists = [];
@@ -643,15 +710,8 @@ function showParcel(feature, extra, outlineColor) {
   var skipTab = _skipTabSwitch;
   _skipTabSwitch = false;
 
-  if (!outlineColor && !(typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList())) {
-    var searchBarEl = document.getElementById('searchBar');
-    var searchBarTextEl = document.getElementById('searchBarText');
-    if (searchBarEl && searchBarTextEl) {
-      searchBarTextEl.textContent = 'Parcel ' + attrs.PARCEL_NBR + ' \u2022 ' + attrs.SHEET + '/' + attrs.PLAN_NBR;
-      searchBarEl.classList.add('has-result');
-    }
-  } else if (typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()) {
-    if (typeof resetSearchBarDisplay === 'function') resetSearchBarDisplay();
+  if (!outlineColor && currentParcel && typeof updateParcelSearchBarTitle === 'function') {
+    updateParcelSearchBarTitle();
   }
 
   if (!skipTab && !outlineColor) {
@@ -815,7 +875,7 @@ function doSearch() {
           btn.textContent = 'Find Parcel';
         });
       }
-      return pickFeatureByMunicipality(features, municipality)
+      return pickFeatureByMunicipality(features, municipality || muniName)
         .then(function(feature) {
           if (gen !== _searchGen) return;
           var attrs = feature.attributes;
@@ -1094,6 +1154,10 @@ function buildParcelShareUrlForItem(item, listId) {
   params.set('plan', norm(item.plan_nbr));
   params.set('parcel', norm(item.parcel_nbr));
   if (item.dist_code) params.set('district', String(item.dist_code));
+  var muniForUrl = item.municipality || (currentParcel && currentParcel.municipality);
+  var distForUrl = item.dist_code || (currentParcel && currentParcel.dist_code);
+  var vilForUrl = vilCodeFromMunicipality(muniForUrl, distForUrl);
+  if (vilForUrl) params.set('municipality', vilForUrl);
   if (listId) params.set('list', listId);
   if (currentParcel &&
       norm(currentParcel.sheet) === norm(item.sheet) &&
@@ -1121,6 +1185,36 @@ function shareParcelFromList(item) {
   }
 }
 
+function shareCurrentParcel() {
+  if (!currentParcel) return;
+  var url = buildParcelShareUrlForItem(currentParcel, null);
+  var ref = 'Parcel ' + currentParcel.parcel_nbr + ' \u2022 ' + currentParcel.sheet + '/' + currentParcel.plan_nbr;
+  if (navigator.share) {
+    navigator.share({ title: ref, text: ref, url: url }).catch(function() {
+      if (navigator.clipboard) navigator.clipboard.writeText(url);
+    });
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url);
+  }
+  var shareBtn = document.getElementById('detailsShareBtn');
+  if (shareBtn) {
+    shareBtn.classList.add('done');
+    setTimeout(function() { shareBtn.classList.remove('done'); }, 1500);
+  }
+}
+
+(function initDetailsActionButtons() {
+  document.getElementById('detailsContent').addEventListener('click', function(e) {
+    if (e.target.closest('#detailsAddBtn')) {
+      if (typeof openSavePanel === 'function') openSavePanel();
+      return;
+    }
+    if (e.target.closest('#detailsShareBtn')) {
+      shareCurrentParcel();
+    }
+  });
+})();
+
 async function prepareParcelFromListItem(item) {
   if (!item) return false;
   var norm = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
@@ -1130,13 +1224,14 @@ async function prepareParcelFromListItem(item) {
   var distCode = item.dist_code ? String(item.dist_code) : '';
   showError('');
   try {
-    var data = await findParcel(sheet, plan, parcelNbr, distCode);
-    var feature = (data.features || [])[0];
+    var feature = await resolveParcelFeature(sheet, plan, parcelNbr, distCode, item.municipality);
     if (!feature) {
       showError('Could not load this saved parcel.');
       return false;
     }
     var attrs = feature.attributes;
+    var blockCode = resolveBlockCode(attrs, item);
+    if (blockCode) attrs.BLCK_CODE = blockCode;
     var center = centroid(feature.geometry.rings);
     map.setView([center[0], center[1]], 18);
     var extra = await enrich(center[0], center[1]);
@@ -1151,7 +1246,7 @@ async function prepareParcelFromListItem(item) {
       quarter: extra.quarter || '',
       planning_zone: extra.planning_zone || '',
       planning_zone_desc: extra.planning_zone_desc || '',
-      block_code: attrs.BLCK_CODE || '',
+      block_code: blockCode,
       postal_code: extra.postal_code || '',
       centroid_lat: center[0],
       centroid_lng: center[1],
@@ -1186,13 +1281,14 @@ async function openSavedParcelFromList(item) {
   var distCode = item.dist_code ? String(item.dist_code) : '';
   showError('');
   try {
-    var data = await findParcel(sheet, plan, parcelNbr, distCode);
-    var feature = (data.features || [])[0];
+    var feature = await resolveParcelFeature(sheet, plan, parcelNbr, distCode, item.municipality);
     if (!feature) {
       showError('Could not load this saved parcel.');
       return;
     }
     var attrs = feature.attributes;
+    var blockCode = resolveBlockCode(attrs, item);
+    if (blockCode) attrs.BLCK_CODE = blockCode;
     document.getElementById('sheet').value = attrs.SHEET || sheet;
     document.getElementById('plan').value = attrs.PLAN_NBR || plan;
     document.getElementById('parcel').value = attrs.PARCEL_NBR || parcelNbr;
@@ -1218,6 +1314,39 @@ async function openSavedParcelFromList(item) {
 
 function clearListParcels() {
   listParcelsGroup.clearLayers();
+  listParcelMapLayers = {};
+  listParcelMapHoverId = null;
+}
+
+function isListParcelsOnMap() {
+  return Object.keys(listParcelMapLayers).length > 0;
+}
+
+function showListParcelMapTooltip(parcelId) {
+  var poly = listParcelMapLayers[parcelId];
+  if (!poly) return;
+  if (poly.getTooltip()) poly.openTooltip(poly.getBounds().getCenter());
+  var item = typeof currentListParcels !== 'undefined'
+    ? currentListParcels.find(function(p) { return p.id === parcelId; })
+    : null;
+  var outlineColor = typeof getParcelOutlineColorForRecord === 'function' && item
+    ? getParcelOutlineColorForRecord(item)
+    : '#ff0000';
+  poly.setStyle({ color: outlineColor, weight: 5, fillColor: outlineColor, fillOpacity: 0.45 });
+  poly.bringToFront();
+}
+
+function hideListParcelMapTooltip(parcelId) {
+  var poly = listParcelMapLayers[parcelId];
+  if (!poly) return;
+  if (poly.getTooltip()) poly.closeTooltip();
+  var item = typeof currentListParcels !== 'undefined'
+    ? currentListParcels.find(function(p) { return p.id === parcelId; })
+    : null;
+  var outlineColor = typeof getParcelOutlineColorForRecord === 'function' && item
+    ? getParcelOutlineColorForRecord(item)
+    : '#ff0000';
+  poly.setStyle({ color: outlineColor, weight: 4, fillColor: outlineColor, fillOpacity: 0.3 });
 }
 
 function showAllListParcels(parcels) {
@@ -1232,14 +1361,13 @@ function showAllListParcels(parcels) {
   btn.textContent = 'Loading...';
 
   var queries = parcels.map(function(p) {
-    return findParcel(p.sheet, p.plan_nbr, p.parcel_nbr, p.dist_code);
+    return resolveParcelFeature(p.sheet, p.plan_nbr, p.parcel_nbr, p.dist_code, p.municipality);
   });
 
-  Promise.all(queries).then(function(results) {
+  Promise.all(queries).then(function(features) {
     var bounds = L.latLngBounds([]);
-    results.forEach(function(data, i) {
+    features.forEach(function(feature, i) {
       var item = parcels[i];
-      var feature = (data.features || [])[0];
       if (!feature) return;
       var coords = feature.geometry.rings[0].map(function(p) { return [p[1], p[0]]; });
       var outlineColor = typeof getParcelOutlineColorForRecord === 'function'
@@ -1260,6 +1388,7 @@ function showAllListParcels(parcels) {
           opacity: 1
         });
       }
+      if (item.id) listParcelMapLayers[item.id] = poly;
       listParcelsGroup.addLayer(poly);
       bounds.extend(poly.getBounds());
     });

@@ -25,7 +25,6 @@ function enterParcelDetailsFromList() {
   parcelDetailsFromList = true;
   var btn = document.getElementById('backToListParcels');
   if (btn) btn.classList.remove('hidden');
-  resetSearchBarDisplay();
 }
 
 function leaveParcelDetailsFromList() {
@@ -747,6 +746,38 @@ document.getElementById('showAllParcelsBtn').addEventListener('click', function(
   if (!currentListParcels.length) return;
   showAllListParcels(currentListParcels);
 });
+
+(function initListParcelMapHover() {
+  var container = document.getElementById('listParcels');
+  if (!container) return;
+
+  container.addEventListener('mouseover', function(e) {
+    var item = e.target.closest('.parcel-list-item[data-parcel-id]');
+    if (!item || typeof isListParcelsOnMap !== 'function' || !isListParcelsOnMap()) return;
+    var id = item.getAttribute('data-parcel-id');
+    if (!id || id === listParcelMapHoverId) return;
+    if (listParcelMapHoverId && typeof hideListParcelMapTooltip === 'function') {
+      hideListParcelMapTooltip(listParcelMapHoverId);
+      var prev = container.querySelector('.parcel-list-item-map-hover');
+      if (prev) prev.classList.remove('parcel-list-item-map-hover');
+    }
+    listParcelMapHoverId = id;
+    if (typeof showListParcelMapTooltip === 'function') showListParcelMapTooltip(id);
+    item.classList.add('parcel-list-item-map-hover');
+  });
+
+  container.addEventListener('mouseout', function(e) {
+    var item = e.target.closest('.parcel-list-item[data-parcel-id]');
+    if (!item) return;
+    var related = e.relatedTarget;
+    if (related && item.contains(related)) return;
+    var id = item.getAttribute('data-parcel-id');
+    if (!id || id !== listParcelMapHoverId) return;
+    listParcelMapHoverId = null;
+    if (typeof hideListParcelMapTooltip === 'function') hideListParcelMapTooltip(id);
+    item.classList.remove('parcel-list-item-map-hover');
+  });
+})();
 
 // --- List detail 3-dot menu ---
 document.getElementById('listDetailMenuBtn').addEventListener('click', function(e) {
