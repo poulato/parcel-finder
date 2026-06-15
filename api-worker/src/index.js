@@ -536,7 +536,7 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, quarter, planning_zone, planning_zone_desc,
-                block_code, note, photo_keys, area_sqm, ownership_pct, ownership_fraction, parcel_title, location_note, sort_order, created_at
+                block_code, note, photo_keys, area_sqm, ownership_pct, ownership_fraction, parcel_title, location_note, parcel_value, registration_no, registration_block, sort_order, created_at
          FROM saved_parcels
          WHERE list_id = ?
          ORDER BY sort_order ASC, datetime(created_at) ASC`
@@ -608,8 +608,8 @@ export default {
           `INSERT INTO saved_parcels (
             id, user_id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
             district, municipality, quarter, planning_zone, planning_zone_desc,
-            block_code, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            block_code, registration_no, registration_block, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, access.list.user_id, listId,
           body.sheet, body.plan_nbr, body.parcel_nbr,
@@ -618,6 +618,10 @@ export default {
           body.planning_zone ?? null,
           body.planning_zone_desc ?? null,
           body.block_code != null && body.block_code !== '' ? String(body.block_code) : null,
+          body.registration_no ? String(body.registration_no).replace(/\.0$/, '') : null,
+          body.registration_block != null && body.registration_block !== ''
+            ? String(body.registration_block).replace(/\.0$/, '')
+            : null,
           sortOrder
         ).run();
       } catch (err) {
@@ -631,7 +635,7 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT id, list_id, sheet, plan_nbr, parcel_nbr, dist_code,
                 district, municipality, quarter, planning_zone, planning_zone_desc,
-                block_code, created_at
+                block_code, registration_no, registration_block, created_at
          FROM saved_parcels WHERE id = ?`
       ).bind(id).all();
 
@@ -652,7 +656,7 @@ export default {
       const norm = s => s ? s.replace(/\.0$/, '') : s;
 
       const { results } = await env.DB.prepare(
-        `SELECT p.id, p.list_id, p.note, p.photo_keys, p.area_sqm, p.ownership_pct, p.ownership_fraction, p.parcel_title, p.location_note, l.name AS list_name
+        `SELECT p.id, p.list_id, p.note, p.photo_keys, p.area_sqm, p.ownership_pct, p.ownership_fraction, p.parcel_title, p.location_note, p.parcel_value, p.registration_no, p.registration_block, l.name AS list_name
          FROM saved_parcels p
          JOIN lists l ON l.id = p.list_id
          LEFT JOIN list_shares s ON s.list_id = l.id AND LOWER(s.email) = LOWER(?)
@@ -696,11 +700,25 @@ export default {
       const parcelTitle = body.parcel_title !== undefined
         ? (body.parcel_title ? String(body.parcel_title).trim() || null : null)
         : undefined;
-      if (note === undefined && photoKeys === undefined && areaSqm === undefined && ownershipParsed === undefined && locationNote === undefined && parcelTitle === undefined) {
+      const parcelValue = body.parcel_value !== undefined
+        ? (body.parcel_value === null || body.parcel_value === '' ? null : Number(body.parcel_value))
+        : undefined;
+      const registrationNo = body.registration_no !== undefined
+        ? (body.registration_no ? String(body.registration_no).replace(/\.0$/, '') : null)
+        : undefined;
+      const registrationBlock = body.registration_block !== undefined
+        ? (body.registration_block != null && body.registration_block !== ''
+          ? String(body.registration_block).replace(/\.0$/, '')
+          : null)
+        : undefined;
+      if (note === undefined && photoKeys === undefined && areaSqm === undefined && ownershipParsed === undefined && locationNote === undefined && parcelTitle === undefined && parcelValue === undefined && registrationNo === undefined && registrationBlock === undefined) {
         return json({ error: "Nothing to update" }, 400);
       }
       if (areaSqm !== undefined && areaSqm !== null && (isNaN(areaSqm) || areaSqm < 0)) {
         return json({ error: "Area must be a positive number" }, 400);
+      }
+      if (parcelValue !== undefined && parcelValue !== null && (isNaN(parcelValue) || parcelValue < 0)) {
+        return json({ error: "Value must be a positive number" }, 400);
       }
       if (locationNote !== undefined && locationNote && locationNote.length > 500) {
         return json({ error: "Location must be 500 characters or less" }, 400);
@@ -747,6 +765,18 @@ export default {
         updates.push("parcel_title = ?");
         binds.push(parcelTitle);
       }
+      if (parcelValue !== undefined) {
+        updates.push("parcel_value = ?");
+        binds.push(parcelValue);
+      }
+      if (registrationNo !== undefined) {
+        updates.push("registration_no = ?");
+        binds.push(registrationNo);
+      }
+      if (registrationBlock !== undefined) {
+        updates.push("registration_block = ?");
+        binds.push(registrationBlock);
+      }
       binds.push(id);
       await env.DB.prepare(
         `UPDATE saved_parcels SET ${updates.join(", ")} WHERE id = ?`
@@ -762,6 +792,9 @@ export default {
       }
       if (locationNote !== undefined) result.location_note = locationNote;
       if (parcelTitle !== undefined) result.parcel_title = parcelTitle;
+      if (parcelValue !== undefined) result.parcel_value = parcelValue;
+      if (registrationNo !== undefined) result.registration_no = registrationNo;
+      if (registrationBlock !== undefined) result.registration_block = registrationBlock;
       return json(result);
     }
 

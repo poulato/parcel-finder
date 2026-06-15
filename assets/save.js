@@ -25,6 +25,13 @@ function formatOwnershipPct(val) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '%';
 }
 
+function formatParcelValue(val) {
+  if (val == null || val === '') return '';
+  var n = Number(val);
+  if (isNaN(n)) return '';
+  return '\u20ac' + n.toLocaleString();
+}
+
 function parseOwnershipFraction(input) {
   if (!input || !String(input).trim()) return { fraction: null, pct: null };
   var str = String(input).trim();
@@ -71,8 +78,11 @@ function getParcelOutlineColorForRecord(record) {
 
 function buildSavedParcelMapTooltip(item) {
   if (!item) return '';
-  var norm = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
-  var refLine = 'Parcel ' + norm(item.parcel_nbr) + ' \u2022 ' + norm(item.sheet) + '/' + norm(item.plan_nbr);
+  var refLine = typeof formatParcelRefLine === 'function'
+    ? formatParcelRefLine(item)
+    : 'Parcel ' + String(item.parcel_nbr == null ? '' : item.parcel_nbr).replace(/\.0$/, '') +
+      ' \u2022 ' + String(item.sheet == null ? '' : item.sheet).replace(/\.0$/, '') +
+      '/' + String(item.plan_nbr == null ? '' : item.plan_nbr).replace(/\.0$/, '');
   var rows = [];
 
   var place = item.municipality || item.district || '';
@@ -85,6 +95,9 @@ function buildSavedParcelMapTooltip(item) {
   if (ownership) rows.push({ label: 'Ownership', value: ownership });
 
   if (item.location_note) rows.push({ label: 'Location', value: item.location_note });
+
+  var valueText = formatParcelValue(item.parcel_value);
+  if (valueText) rows.push({ label: 'Value', value: valueText });
 
   var photos = parseSavedPhotoKeys(item.photo_keys);
   if (photos.length) rows.push({ label: 'Photos', value: photos.length + ' photo' + (photos.length === 1 ? '' : 's') });
@@ -113,6 +126,7 @@ function renderParcelMetaFields() {
   renderParcelAreaField();
   renderParcelOwnershipField();
   renderParcelLocationField();
+  renderParcelValueField();
   renderParcelPhotosField();
   renderParcelNoteField();
 }
@@ -236,7 +250,24 @@ async function uploadParcelPhotoBatch(parcelId, existingKeys, files) {
 
 function getParcelRefLabel() {
   if (!currentParcel) return '';
-  return 'Parcel ' + currentParcel.parcel_nbr + ' \u2022 ' + currentParcel.sheet + '/' + currentParcel.plan_nbr;
+  var p = Object.assign({}, currentParcel);
+  if (typeof getActiveSavedParcelRecord === 'function') {
+    var record = getActiveSavedParcelRecord();
+    if (record) {
+      if (!p.registration_no && record.registration_no) p.registration_no = record.registration_no;
+      if (!p.registration_block && record.registration_block != null) p.registration_block = record.registration_block;
+    }
+  }
+  if (typeof findListParcelForCurrentParcel === 'function') {
+    var listItem = findListParcelForCurrentParcel();
+    if (listItem) {
+      if (!p.registration_no && listItem.registration_no) p.registration_no = listItem.registration_no;
+      if (!p.registration_block && listItem.registration_block != null) p.registration_block = listItem.registration_block;
+    }
+  }
+  return typeof formatParcelRefLine === 'function' ? formatParcelRefLine(p) : (
+    'Parcel ' + p.parcel_nbr + ' \u2022 ' + p.sheet + '/' + p.plan_nbr
+  );
 }
 
 function updateParcelSearchBarTitle(record) {
@@ -309,6 +340,7 @@ function openParcelTitleEditor() {
   closeParcelAreaEditor();
   closeParcelOwnershipEditor();
   closeParcelLocationEditor();
+  closeParcelValueEditor();
   var titleEl = document.getElementById('parcelTitleDisplay');
   var subEl = document.getElementById('parcelTitleSub');
   var editBtn = document.getElementById('parcelTitleEditBtn');
@@ -389,7 +421,7 @@ function mergeSavedParcelWithListItem(record) {
     : findListParcelForCurrentParcel();
   if (!listItem) return record;
   var merged = Object.assign({}, listItem, record);
-  ['parcel_title', 'note', 'area_sqm', 'ownership_fraction', 'ownership_pct', 'location_note', 'photo_keys'].forEach(function(key) {
+  ['parcel_title', 'note', 'area_sqm', 'ownership_fraction', 'ownership_pct', 'location_note', 'parcel_value', 'registration_no', 'registration_block', 'photo_keys'].forEach(function(key) {
     if ((merged[key] == null || merged[key] === '') && listItem[key] != null && listItem[key] !== '') {
       merged[key] = listItem[key];
     }
@@ -446,6 +478,7 @@ function openParcelAreaEditor() {
   closeParcelOwnershipEditor();
   closeParcelLocationEditor();
   closeParcelTitleEditor();
+  closeParcelValueEditor();
   var valueEl = document.getElementById('parcelAreaValue');
   var editBtn = document.getElementById('parcelAreaEditBtn');
   var editor = document.getElementById('parcelAreaEditor');
@@ -539,6 +572,7 @@ function openParcelOwnershipEditor() {
   closeParcelAreaEditor();
   closeParcelLocationEditor();
   closeParcelTitleEditor();
+  closeParcelValueEditor();
   var valueEl = document.getElementById('parcelOwnershipValue');
   var editBtn = document.getElementById('parcelOwnershipEditBtn');
   var editor = document.getElementById('parcelOwnershipEditor');
@@ -654,6 +688,7 @@ function openParcelLocationEditor() {
   closeParcelAreaEditor();
   closeParcelOwnershipEditor();
   closeParcelTitleEditor();
+  closeParcelValueEditor();
   var valueEl = document.getElementById('parcelLocationValue');
   var editBtn = document.getElementById('parcelLocationEditBtn');
   var editor = document.getElementById('parcelLocationEditor');
@@ -697,6 +732,93 @@ async function saveParcelLocation() {
   } catch (err) {
     console.error(err);
     showError('Failed to save location.');
+  }
+}
+
+function renderParcelValueField() {
+  var valueEl = document.getElementById('parcelValueDisplay');
+  var editBtn = document.getElementById('parcelValueEditBtn');
+  var editor = document.getElementById('parcelValueEditor');
+  if (!valueEl) return;
+
+  var record = getActiveSavedParcelRecord();
+  var canEdit = record && canEditSavedParcelRecord(record);
+
+  if (editor) editor.classList.add('hidden');
+  if (valueEl) valueEl.style.display = '';
+
+  if (!record) {
+    valueEl.textContent = '\u2014';
+    if (editBtn) editBtn.classList.add('hidden');
+    return;
+  }
+
+  if (record.parcel_value != null && record.parcel_value !== '') {
+    valueEl.textContent = formatParcelValue(record.parcel_value);
+    valueEl.classList.remove('parcel-area-placeholder');
+  } else {
+    valueEl.textContent = canEdit ? 'Add value' : '\u2014';
+    if (canEdit) valueEl.classList.add('parcel-area-placeholder');
+    else valueEl.classList.remove('parcel-area-placeholder');
+  }
+
+  if (editBtn) {
+    if (canEdit) editBtn.classList.remove('hidden');
+    else editBtn.classList.add('hidden');
+  }
+}
+
+function openParcelValueEditor() {
+  var record = getActiveSavedParcelRecord();
+  if (!record || !canEditSavedParcelRecord(record)) return;
+  closeParcelAreaEditor();
+  closeParcelOwnershipEditor();
+  closeParcelLocationEditor();
+  closeParcelTitleEditor();
+  var valueEl = document.getElementById('parcelValueDisplay');
+  var editBtn = document.getElementById('parcelValueEditBtn');
+  var editor = document.getElementById('parcelValueEditor');
+  var input = document.getElementById('parcelValueInput');
+  if (!editor || !input) return;
+  input.value = record.parcel_value != null && record.parcel_value !== '' ? String(record.parcel_value) : '';
+  editor.classList.remove('hidden');
+  if (valueEl) valueEl.style.display = 'none';
+  if (editBtn) editBtn.classList.add('hidden');
+  input.focus();
+}
+
+function closeParcelValueEditor() {
+  var editor = document.getElementById('parcelValueEditor');
+  if (editor) editor.classList.add('hidden');
+  renderParcelValueField();
+}
+
+async function saveParcelValue() {
+  var record = getActiveSavedParcelRecord();
+  if (!record || !canEditSavedParcelRecord(record)) return;
+  var input = document.getElementById('parcelValueInput');
+  if (!input) return;
+  var raw = input.value.trim();
+  var valueVal = raw === '' ? null : Number(raw);
+  if (valueVal !== null && (isNaN(valueVal) || valueVal < 0)) {
+    showError('Value must be a positive number.');
+    return;
+  }
+  try {
+    var res = await authFetch(API_BASE + '/parcels/' + encodeURIComponent(record.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parcel_value: valueVal })
+    });
+    if (!res.ok) throw new Error('failed to save value');
+    record.parcel_value = valueVal;
+    var p = currentListParcels.find(function(x) { return x.id === record.id; });
+    if (p) p.parcel_value = valueVal;
+    closeParcelValueEditor();
+    renderSavedParcelDetails();
+  } catch (err) {
+    console.error(err);
+    showError('Failed to save value.');
   }
 }
 
@@ -1032,6 +1154,31 @@ document.getElementById('saveListPicker').addEventListener('click', async functi
       body: JSON.stringify(currentParcel)
     });
     if (res.status === 409) {
+      if (currentParcel.registration_no) {
+        try {
+          var dupRes = await authFetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels');
+          if (dupRes.ok) {
+            var dupParcels = await dupRes.json();
+            var normDup = function(s) { return String(s == null ? '' : s).replace(/\.0$/, ''); };
+            var dupMatch = dupParcels.find(function(p) {
+              return normDup(p.sheet) === normDup(currentParcel.sheet) &&
+                normDup(p.plan_nbr) === normDup(currentParcel.plan_nbr) &&
+                normDup(p.parcel_nbr) === normDup(currentParcel.parcel_nbr) &&
+                String(p.dist_code || '') == String(currentParcel.dist_code || '');
+            });
+            if (dupMatch) {
+              await authFetch(API_BASE + '/parcels/' + encodeURIComponent(dupMatch.id), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  registration_no: currentParcel.registration_no,
+                  registration_block: currentParcel.registration_block
+                })
+              });
+            }
+          }
+        } catch (patchErr) { console.error(patchErr); }
+      }
       parcelSavedLists.push(listId);
       updateSaveButton();
       renderSavePanel();
@@ -1160,6 +1307,18 @@ document.getElementById('detailsContent').addEventListener('click', function(e) 
     closeParcelLocationEditor();
     return;
   }
+  if (e.target.closest('#parcelValueEditBtn') || e.target.closest('#parcelValueDisplay.parcel-area-placeholder')) {
+    openParcelValueEditor();
+    return;
+  }
+  if (e.target.closest('#parcelValueSaveBtn')) {
+    saveParcelValue();
+    return;
+  }
+  if (e.target.closest('#parcelValueCancelBtn')) {
+    closeParcelValueEditor();
+    return;
+  }
   if (e.target.closest('#parcelNoteLine')) {
     openDetailsNoteEditor();
     return;
@@ -1260,5 +1419,10 @@ document.getElementById('detailsContent').addEventListener('keydown', function(e
   if (e.target.id === 'parcelLocationInput') {
     if (e.key === 'Enter') { e.preventDefault(); saveParcelLocation(); }
     if (e.key === 'Escape') closeParcelLocationEditor();
+    return;
+  }
+  if (e.target.id === 'parcelValueInput') {
+    if (e.key === 'Enter') { e.preventDefault(); saveParcelValue(); }
+    if (e.key === 'Escape') closeParcelValueEditor();
   }
 });

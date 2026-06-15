@@ -412,29 +412,6 @@ body {
   font-weight: normal;
 }
 
-.parcel-search-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-.parcel-search-tab {
-  flex: 1;
-  padding: 6px 8px;
-  font-size: 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #1e293b;
-  color: #94a3b8;
-  cursor: pointer;
-}
-.parcel-search-tab.active {
-  background: #0f172a;
-  color: #f1f5f9;
-  border-color: #3b82f6;
-}
-.parcel-search-panel { display: none; flex-direction: column; gap: 8px; }
-.parcel-search-panel.active { display: flex; }
-
 .bazaraki-row {
   display: flex;
   gap: 6px;
@@ -1582,6 +1559,11 @@ body {
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.parcel-list-value {
+  color: #6ee7b7;
+  font-size: 11px;
+  font-weight: 600;
 }
 .parcel-location-row .parcel-location-value {
   white-space: pre-wrap;

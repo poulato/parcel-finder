@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=119" />
+  <link rel="stylesheet" href="./assets/styles.css?v=122" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -82,12 +82,6 @@
       </div>
 
       <div id="searchModeParcel" class="search-mode-panel active">
-        <nav class="parcel-search-tabs">
-          <button type="button" class="parcel-search-tab active" data-parcel-search="map">Map reference</button>
-          <button type="button" class="parcel-search-tab" data-parcel-search="reg">Registration No.</button>
-        </nav>
-
-        <div id="parcelSearchMap" class="parcel-search-panel active">
         <div class="field">
           <label for="sheet">Sheet <span class="field-optional">(optional)</span></label>
           <input type="text" id="sheet" placeholder="e.g. 47" />
@@ -97,27 +91,14 @@
           <input type="text" id="plan" placeholder="e.g. 41" />
         </div>
         <div class="field">
-          <label for="parcel">Parcel or Registration No.</label>
-          <input type="text" id="parcel" placeholder="e.g. 5668 or 190" />
-        </div>
-        <div class="field">
           <label for="regBlock">Reg. block <span class="field-optional">(if registration)</span></label>
           <input type="text" id="regBlock" placeholder="0" value="0" />
         </div>
-        </div>
-
-        <div id="parcelSearchReg" class="parcel-search-panel">
-        <div class="field-hint">Title deed registration number (Αριθμός Εγγραφής)</div>
         <div class="field">
-          <label for="regBlockAlt">Registration block</label>
-          <input type="text" id="regBlockAlt" placeholder="0" value="0" />
+          <label for="parcel">Parcel or registration number</label>
+          <input type="text" id="parcel" placeholder="e.g. 190 or 5668" />
+          <div class="field-hint">Registration search: leave sheet/plan empty, set district + municipality</div>
         </div>
-        <div class="field">
-          <label for="regNo">Registration number</label>
-          <input type="text" id="regNo" placeholder="e.g. 5668" />
-        </div>
-        </div>
-
         <div class="field">
           <label for="district">District</label>
           <select id="district">
@@ -528,9 +509,9 @@
     </div>
   </div>
   <script src="./assets/auth.js?v=15" defer></script>
-  <script src="./assets/map.js?v=103" defer></script>
-  <script src="./assets/lists.js?v=53" defer></script>
-  <script src="./assets/save.js?v=50" defer></script>
+  <script src="./assets/map.js?v=109" defer></script>
+  <script src="./assets/lists.js?v=55" defer></script>
+  <script src="./assets/save.js?v=54" defer></script>
   <script src="./assets/sale.js?v=64" defer></script>
   <script src="./assets/app.js?v=47" defer></script>
 </body>

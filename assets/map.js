@@ -89,7 +89,7 @@ function dlsQuery(layerId, params) {
     });
 }
 
-var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR';
+var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR,SBPI_ID_NO';
 var municipalityCache = [];
 
 function escapeWhereStr(s) {
@@ -165,6 +165,51 @@ function findByRegistration(distCode, vilCode, regBlock, regNo) {
   });
 }
 
+function findRegistrationBySbpiId(sbpiId) {
+  if (!sbpiId) return Promise.resolve({ features: [] });
+  return dlsQueryUrl(DLS_SEARCH + '/14/query', {
+    where: 'ParcelId=' + sbpiId,
+    outFields: 'RegistrationNo,RegistrationBlock',
+    returnGeometry: 'false',
+    resultRecordCount: 5
+  });
+}
+
+function formatRegistrationNo(v) {
+  if (v == null || v === '') return '';
+  return String(v).replace(/\.0$/, '');
+}
+
+function formatRegistrationBlock(v) {
+  if (v == null || v === '') return '';
+  return String(v).replace(/\.0$/, '');
+}
+
+function displayRegistration(block, no) {
+  var n = formatRegistrationNo(no);
+  if (!n) return '';
+  var b = formatRegistrationBlock(block);
+  if (b && b !== '0') return b + ' / ' + n;
+  return n;
+}
+
+function formatParcelRefLine(item) {
+  if (!item) return '';
+  var norm = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
+  var line = 'Parcel ' + norm(item.parcel_nbr) + ' \u2022 ' + norm(item.sheet) + '/' + norm(item.plan_nbr);
+  var reg = displayRegistration(item.registration_block, item.registration_no);
+  if (reg) line += ' \u2022 Reg. ' + reg;
+  return line;
+}
+
+function registrationMetaFromItem(item) {
+  if (!item) return {};
+  return {
+    registration_no: item.registration_no || null,
+    registration_block: item.registration_block != null ? item.registration_block : null
+  };
+}
+
 function findParcelBySbpiId(sbpiId) {
   return dlsQueryUrl(DLS_SEARCH + '/0/query', {
     where: 'SBPI_ID_NO=' + sbpiId,
@@ -177,20 +222,24 @@ function findParcelBySbpiId(sbpiId) {
 function tryRegistrationSearch(distCode, vilCode, regBlock, regNo) {
   return findByRegistration(distCode, vilCode, regBlock, regNo).then(function(data) {
     var row = (data.features || [])[0];
-    if (!row) return { features: [], viaRegistration: true, regNo: regNo };
+    if (!row) return { features: [], viaRegistration: true, regNo: regNo, regBlock: regBlock };
     return findParcelBySbpiId(row.attributes.ParcelId).then(function(parcelData) {
       return {
         features: parcelData.features || [],
         viaRegistration: true,
-        regNo: regNo
+        regNo: regNo,
+        regBlock: regBlock
       };
     });
   });
 }
 
-function isRegistrationSearchActive() {
-  var panel = document.getElementById('parcelSearchReg');
-  return panel && panel.classList.contains('active');
+function normParcelField(v) {
+  return String(v == null ? '' : v).replace(/\.0$/, '');
+}
+
+function resolveRegistrationForAttrs(meta, attrs) {
+  return Promise.resolve(applyRegistrationMeta(meta || {}, attrs));
 }
 
 function findParcels(parcelNbr, distCode, vilCode, sheet, plan) {
@@ -537,6 +586,12 @@ function buildParcelHTML(attrs, extra, opts) {
   var quarterRow = extra.quarter
     ? '<div><span class="label">Quarter:</span> <span class="value">' + extra.quarter + '</span></div>'
     : '';
+  var parcelNbr = normParcelField(attrs.PARCEL_NBR);
+  if (!parcelNbr && opts.parcelNbr) parcelNbr = normParcelField(opts.parcelNbr);
+  var regText = displayRegistration(opts.registrationBlock, opts.registrationNo);
+  var regRow = regText
+    ? '<div><span class="label">Registration:</span> <span class="value" id="parcelRegistrationValue">' + regText + '</span></div>'
+    : '<div id="parcelRegistrationRow" class="hidden"><span class="label">Registration:</span> <span class="value" id="parcelRegistrationValue"></span></div>';
   return '<div class="parcel-title-header">' +
       '<h3 id="parcelTitleDisplay"></h3>' +
       '<button type="button" id="parcelTitleEditBtn" class="parcel-meta-edit-btn hidden" title="Edit title">Edit</button>' +
@@ -564,7 +619,9 @@ function buildParcelHTML(attrs, extra, opts) {
     '<div><span class="label">Municipality:</span> <span class="value">' + extra.municipality + '</span></div>' +
     quarterRow +
     '<div><span class="label">Postal Code:</span> <span class="value">' + extra.postal_code + '</span></div>' +
+    '<div><span class="label">Parcel:</span> <span class="value">' + parcelNbr + '</span></div>' +
     '<div><span class="label">Sheet / Plan:</span> <span class="value">' + attrs.SHEET + ' / ' + attrs.PLAN_NBR + '</span></div>' +
+    regRow +
     '<div><span class="label">Block:</span> <span class="value">' + displayBlockCode(attrs.BLCK_CODE) + '</span></div>' +
     '<div><span class="label">Planning Zone:</span> <span class="value">' + extra.planning_zone + '</span></div>' +
     '<div><span class="label">Zone Detail:</span> <span class="value zone-detail">' + extra.planning_zone_desc + '</span></div>' +
@@ -600,6 +657,17 @@ function buildParcelHTML(attrs, extra, opts) {
       '<div class="parcel-area-editor-actions">' +
         '<button type="button" id="parcelLocationSaveBtn" class="note-save-btn">Save</button>' +
         '<button type="button" id="parcelLocationCancelBtn" class="note-cancel-btn">Cancel</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="parcelValueRow" class="parcel-area-row">' +
+      '<span class="label">Value:</span> <span class="value" id="parcelValueDisplay">\u2014</span>' +
+      '<button type="button" id="parcelValueEditBtn" class="parcel-meta-edit-btn hidden" title="Edit value">Edit</button>' +
+    '</div>' +
+    '<div id="parcelValueEditor" class="parcel-area-editor hidden">' +
+      '<input type="number" id="parcelValueInput" min="0" step="1" placeholder="\u20ac" />' +
+      '<div class="parcel-area-editor-actions">' +
+        '<button type="button" id="parcelValueSaveBtn" class="note-save-btn">Save</button>' +
+        '<button type="button" id="parcelValueCancelBtn" class="note-cancel-btn">Cancel</button>' +
       '</div>' +
     '</div>' +
     '<div id="parcelPhotosSection" class="parcel-details-photos-section hidden">' +
@@ -655,6 +723,39 @@ function applyParcelOutlineColor(color) {
   });
 }
 
+function updateParcelRegistrationDisplay(block, no) {
+  var row = document.getElementById('parcelRegistrationRow');
+  var valueEl = document.getElementById('parcelRegistrationValue');
+  if (!valueEl) return;
+  var text = displayRegistration(block, no);
+  if (text) {
+    valueEl.textContent = text;
+    if (row) row.classList.remove('hidden');
+  } else if (row) {
+    row.classList.add('hidden');
+    valueEl.textContent = '';
+  }
+}
+
+function applyRegistrationMeta(meta, attrs) {
+  meta = meta || {};
+  if (meta.registration_no) {
+    return {
+      registration_no: formatRegistrationNo(meta.registration_no),
+      registration_block: formatRegistrationBlock(meta.registration_block)
+    };
+  }
+  if (!attrs || !attrs.SBPI_ID_NO) return { registration_no: null, registration_block: null };
+  return findRegistrationBySbpiId(attrs.SBPI_ID_NO).then(function(data) {
+    var row = (data.features || [])[0];
+    if (!row) return { registration_no: null, registration_block: null };
+    return {
+      registration_no: formatRegistrationNo(row.attributes.RegistrationNo),
+      registration_block: formatRegistrationBlock(row.attributes.RegistrationBlock)
+    };
+  });
+}
+
 function updateParcelOwnershipAppearance() {
   if (currentParcelOutlineOverride) {
     applyParcelOutlineColor(currentParcelOutlineOverride);
@@ -667,7 +768,8 @@ function updateParcelOwnershipAppearance() {
   applyParcelOutlineColor(color);
 }
 
-function showParcel(feature, extra, outlineColor) {
+function showParcel(feature, extra, outlineColor, meta) {
+  meta = meta || {};
   if (parcelLayer) { map.removeLayer(parcelLayer); }
   clearListParcels();
   currentParcelOutlineOverride = outlineColor || null;
@@ -688,6 +790,8 @@ function showParcel(feature, extra, outlineColor) {
     planning_zone_desc: extra.planning_zone_desc || '',
     block_code: resolveBlockCode(attrs, null),
     postal_code: extra.postal_code || '',
+    registration_no: formatRegistrationNo(meta.registration_no) || null,
+    registration_block: formatRegistrationBlock(meta.registration_block) || null,
     centroid_lat: parcelCentroid[0],
     centroid_lng: parcelCentroid[1],
     geometry_rings: JSON.stringify(feature.geometry.rings)
@@ -701,7 +805,10 @@ function showParcel(feature, extra, outlineColor) {
   }).addTo(map);
 
   var html = buildParcelHTML(attrs, extra, {
-    showActions: !outlineColor && !(typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList())
+    showActions: !outlineColor && !(typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()),
+    registrationNo: currentParcel.registration_no,
+    registrationBlock: currentParcel.registration_block,
+    parcelNbr: currentParcel.parcel_nbr
   });
 
   detailsContentEl.innerHTML = html;
@@ -750,7 +857,6 @@ function doClear() {
   document.getElementById('plan').value = '';
   document.getElementById('parcel').value = '';
   document.getElementById('regBlock').value = '0';
-  document.getElementById('regNo').value = '';
   document.getElementById('district').value = '';
   populateMunicipalitySelect('');
   document.getElementById('municipality').value = '';
@@ -786,9 +892,7 @@ function doSearch() {
   var plan = document.getElementById('plan').value.trim();
   var parcelNbr = document.getElementById('parcel').value.trim();
   var regBlockEl = document.getElementById('regBlock');
-  var regBlockAlt = document.getElementById('regBlockAlt');
-  var regBlock = (regBlockEl && regBlockEl.value.trim()) || (regBlockAlt && regBlockAlt.value.trim()) || '0';
-  var regNo = document.getElementById('regNo').value.trim();
+  var regBlock = (regBlockEl && regBlockEl.value.trim()) || '0';
   var distCode = document.getElementById('district').value;
   var muniVal = document.getElementById('municipality').value;
   var vilCode = '';
@@ -803,32 +907,20 @@ function doSearch() {
   }
   var municipality = _searchMunicipality;
   _searchMunicipality = null;
-  var registrationMode = isRegistrationSearchActive();
 
   showError('');
 
-  if (registrationMode) {
-    if (!regNo) {
-      showError('Enter a Registration number.');
-      return;
-    }
-    if (!distCode || !vilCode) {
-      showError('Select District and Municipality for registration search.');
-      return;
-    }
-  } else {
-    if (!parcelNbr) {
-      showError('Enter a parcel or registration number.');
-      return;
-    }
-    if (!sheet && !plan && !distCode && !vilCode) {
-      showError('Select District and Municipality.');
-      return;
-    }
-    if (!sheet && !plan && (!distCode || !vilCode)) {
-      showError('Select District and Municipality to search by number.');
-      return;
-    }
+  if (!parcelNbr) {
+    showError('Enter a parcel or registration number.');
+    return;
+  }
+  if (!sheet && !plan && !distCode && !vilCode) {
+    showError('Select District and Municipality.');
+    return;
+  }
+  if (!sheet && !plan && (!distCode || !vilCode)) {
+    showError('Select District and Municipality to search by number.');
+    return;
   }
 
   clearGpsDot();
@@ -837,12 +929,10 @@ function doSearch() {
   btn.disabled = true;
   btn.textContent = 'Searching...';
 
-  var searchNumber = registrationMode ? regNo : parcelNbr;
+  var searchNumber = parcelNbr;
   var searchPromise;
-  var usedRegistration = registrationMode;
 
-  if (registrationMode || (!sheet && !plan && distCode && vilCode)) {
-    usedRegistration = true;
+  if (!sheet && !plan && distCode && vilCode) {
     searchPromise = tryRegistrationSearch(distCode, vilCode, regBlock, searchNumber);
   } else {
     searchPromise = findParcels(parcelNbr, distCode, vilCode, sheet || null, plan || null).then(function(data) {
@@ -886,30 +976,33 @@ function doSearch() {
           document.getElementById('sheet').value = resSheet || '';
           document.getElementById('plan').value = resPlan || '';
           document.getElementById('parcel').value = resParcel || '';
-          if (viaRegistration) {
-            document.getElementById('regNo').value = matchedRegNo;
-          }
           var center = centroid(feature.geometry.rings);
           map.setView([center[0], center[1]], 18);
           updateURL(resSheet || '', resPlan || '', String(resParcel), distCode, vilCode);
 
           return enrich(center[0], center[1]).then(function(extra) {
             if (gen !== _searchGen) return;
-            showParcel(feature, extra);
-            if (viaRegistration) {
-              showError(
-                'Registration ' + matchedRegNo + ' → Parcel ' + resParcel + ' (Sheet ' + resSheet + ' / Plan ' + resPlan + ')',
-                'warn'
-              );
-            } else if (features.length > 1 && (!sheet || !plan)) {
-              showError(
-                'Found ' + features.length + ' matches for parcel ' + parcelNbr +
-                '. Showing Sheet ' + resSheet + ' / Plan ' + resPlan + '.',
-                'warn'
-              );
-            }
-            btn.disabled = false;
-            btn.textContent = 'Find Parcel';
+            var regSeed = viaRegistration
+              ? { registration_no: matchedRegNo, registration_block: result.regBlock != null ? result.regBlock : regBlock }
+              : {};
+            return resolveRegistrationForAttrs(regSeed, attrs).then(function(regMeta) {
+              if (gen !== _searchGen) return;
+              showParcel(feature, extra, null, regMeta);
+              if (viaRegistration) {
+                showError(
+                  'Registration ' + matchedRegNo + ' → Parcel ' + resParcel + ' (Sheet ' + resSheet + ' / Plan ' + resPlan + ')',
+                  'warn'
+                );
+              } else if (features.length > 1 && (!sheet || !plan)) {
+                showError(
+                  'Found ' + features.length + ' matches for parcel ' + parcelNbr +
+                  '. Showing Sheet ' + resSheet + ' / Plan ' + resPlan + '.',
+                  'warn'
+                );
+              }
+              btn.disabled = false;
+              btn.textContent = 'Find Parcel';
+            });
           });
         });
     })
@@ -957,10 +1050,13 @@ function applyResolvedParcel(feature, approx, gen, approxHint) {
   updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '', attrs.VIL_CODE);
   return enrich(center[0], center[1]).then(function(extra) {
     if (gen !== _searchGen) return;
-    showParcel(feature, extra);
-    if (approx) {
-      showError(approxHint || 'Approximate match — the pin was not exactly on a parcel. Please verify this is the correct parcel.', 'warn');
-    }
+    return resolveRegistrationForAttrs({}, attrs).then(function(regMeta) {
+      if (gen !== _searchGen) return;
+      showParcel(feature, extra, null, regMeta);
+      if (approx) {
+        showError(approxHint || 'Approximate match — the pin was not exactly on a parcel. Please verify this is the correct parcel.', 'warn');
+      }
+    });
   });
 }
 
@@ -1113,16 +1209,6 @@ document.querySelectorAll('.search-mode-tab').forEach(function(tab) {
   });
 });
 
-document.querySelectorAll('.parcel-search-tab').forEach(function(tab) {
-  tab.addEventListener('click', function() {
-    document.querySelectorAll('.parcel-search-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.parcel-search-panel').forEach(function(p) { p.classList.remove('active'); });
-    this.classList.add('active');
-    var mode = this.getAttribute('data-parcel-search');
-    document.getElementById('parcelSearch' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
-  });
-});
-
 document.getElementById('bazarakiUrl').addEventListener('input', function() {
   document.getElementById('bazarakiClear').classList.toggle('visible', this.value.length > 0);
 });
@@ -1175,7 +1261,7 @@ function buildParcelShareUrlForItem(item, listId) {
 function shareParcelFromList(item) {
   if (!item) return;
   var url = buildParcelShareUrlForItem(item, currentListId);
-  var ref = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+  var ref = formatParcelRefLine(item);
   var title = item.parcel_title ? item.parcel_title : ref;
   if (navigator.share) {
     navigator.share({ title: title, text: title, url: url }).catch(function() {
@@ -1189,7 +1275,7 @@ function shareParcelFromList(item) {
 function shareCurrentParcel() {
   if (!currentParcel) return;
   var url = buildParcelShareUrlForItem(currentParcel, null);
-  var ref = 'Parcel ' + currentParcel.parcel_nbr + ' \u2022 ' + currentParcel.sheet + '/' + currentParcel.plan_nbr;
+  var ref = formatParcelRefLine(currentParcel);
   if (navigator.share) {
     navigator.share({ title: ref, text: ref, url: url }).catch(function() {
       if (navigator.clipboard) navigator.clipboard.writeText(url);
@@ -1236,6 +1322,7 @@ async function prepareParcelFromListItem(item) {
     var center = centroid(feature.geometry.rings);
     map.setView([center[0], center[1]], 18);
     var extra = await enrich(center[0], center[1]);
+    var regMeta = await Promise.resolve(applyRegistrationMeta(registrationMetaFromItem(item), attrs));
     var clean = norm;
     currentParcel = {
       sheet: clean(attrs.SHEET),
@@ -1249,6 +1336,8 @@ async function prepareParcelFromListItem(item) {
       planning_zone_desc: extra.planning_zone_desc || '',
       block_code: blockCode,
       postal_code: extra.postal_code || '',
+      registration_no: regMeta.registration_no || null,
+      registration_block: regMeta.registration_block || null,
       centroid_lat: center[0],
       centroid_lng: center[1],
       geometry_rings: JSON.stringify(feature.geometry.rings)
@@ -1305,8 +1394,9 @@ async function openSavedParcelFromList(item) {
       attrs.VIL_CODE
     );
     var extra = await enrich(center[0], center[1]);
+    var regMeta = await resolveRegistrationForAttrs(registrationMetaFromItem(item), attrs);
     enterParcelDetailsFromList();
-    showParcel(feature, extra);
+    showParcel(feature, extra, null, regMeta);
     openSidebar();
   } catch (err) {
     showError('Failed to load parcel: ' + err.message);
@@ -1496,7 +1586,9 @@ map.on('click', function(e) {
       updateURL(attrs.SHEET || '', attrs.PLAN_NBR || '', attrs.PARCEL_NBR || '', attrs.DIST_CODE || '', attrs.VIL_CODE);
 
       return enrich(center[0], center[1]).then(function(extra) {
-        showParcel(feature, extra);
+        return resolveRegistrationForAttrs({}, attrs).then(function(regMeta) {
+          showParcel(feature, extra, null, regMeta);
+        });
       });
     })
     .catch(function(err) {

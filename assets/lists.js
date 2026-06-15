@@ -476,7 +476,9 @@ async function moveListParcel(parcelId, delta) {
 }
 
 function renderParcelItem(item, canEdit) {
-  var refLine = 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
+  var refLine = typeof formatParcelRefLine === 'function'
+    ? formatParcelRefLine(item)
+    : 'Parcel ' + item.parcel_nbr + ' \u2022 ' + item.sheet + '/' + item.plan_nbr;
   var titleLine = item.parcel_title
     ? '<div class="parcel-list-custom-title">' + escapeHTML(item.parcel_title) + '</div>' +
       '<div class="parcel-list-ref">' + refLine + '</div>'
@@ -490,6 +492,9 @@ function renderParcelItem(item, canEdit) {
     : '';
   var locationLine = item.location_note
     ? '<div class="parcel-list-location">' + escapeHTML(item.location_note) + '</div>'
+    : '';
+  var valueLine = (item.parcel_value != null && item.parcel_value !== '' && typeof formatParcelValue === 'function')
+    ? '<div class="parcel-list-value">' + escapeHTML(formatParcelValue(item.parcel_value)) + '</div>'
     : '';
   var data = encodeURIComponent(JSON.stringify({
     sheet: item.sheet, plan_nbr: item.plan_nbr,
@@ -557,6 +562,7 @@ function renderParcelItem(item, canEdit) {
           areaSqmLine +
           ownershipLine +
           locationLine +
+          valueLine +
           photosHTML +
         '</div>' +
         menuHTML +
