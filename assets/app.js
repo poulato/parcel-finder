@@ -273,7 +273,8 @@ if (shareToken) {
 } else if (authUser) {
   loadLists().then(function() {
     var listParam = params.get('list');
-    if (listParam) {
+    var parcelParam = params.get('parcel');
+    if (listParam && !parcelParam) {
       openListParcels(listParam).then(function() {
         if (currentListParcels.length) showAllListParcels(currentListParcels);
       });
@@ -288,6 +289,18 @@ if (shareToken) {
         if (savedRail) savedRail.classList.add('active');
       }
       openSidebar();
+    } else if (listParam && parcelParam) {
+      if (typeof preloadListContextFromURL === 'function') preloadListContextFromURL();
+      openListParcels(listParam, undefined, { skipTabSwitch: true });
+      if (isMobile()) {
+        document.querySelectorAll('.bottom-tab').forEach(function(b) { b.classList.remove('active'); });
+        var savedBtn = document.querySelector('.bottom-tab[data-tab="list"]');
+        if (savedBtn) savedBtn.classList.add('active');
+      } else {
+        document.querySelectorAll('.rail-btn').forEach(function(b) { b.classList.remove('active'); });
+        var savedRail = document.querySelector('.rail-btn[data-tab="list"]');
+        if (savedRail) savedRail.classList.add('active');
+      }
     }
   });
 }

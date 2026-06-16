@@ -873,6 +873,10 @@ function showParcel(feature, extra, outlineColor, meta) {
     }
     if (sidebar.classList.contains('hidden')) openSidebar();
   }
+
+  if (!outlineColor && typeof restoreListContextIfNeeded === 'function') {
+    restoreListContextIfNeeded();
+  }
 }
 
 function doClear() {
@@ -912,6 +916,16 @@ function updateURL(sheet, plan, parcelNbr, distCode, vilCode) {
   else params.delete('district');
   if (vilCode !== undefined && vilCode !== null && vilCode !== '') params.set('municipality', vilCode);
   else params.delete('municipality');
+  if (typeof currentListId !== 'undefined' && currentListId) {
+    params.set('list', currentListId);
+  } else if (!parcelDetailsFromList) {
+    params.delete('list');
+  }
+  if (typeof parcelDetailsFromGrid !== 'undefined' && parcelDetailsFromGrid) {
+    params.set('grid', '1');
+  } else if (!parcelDetailsFromList) {
+    params.delete('grid');
+  }
   var c = map.getCenter();
   params.set('lat', c.lat.toFixed(6));
   params.set('lng', c.lng.toFixed(6));
@@ -1652,6 +1666,7 @@ function loadFromURL() {
   if (params.get('listing') && params.get('tab') === 'sale') return;
 
   if (parcelNbr) {
+    if (typeof preloadListContextFromURL === 'function') preloadListContextFromURL();
     document.getElementById('sheet').value = sheet || '';
     document.getElementById('plan').value = plan || '';
     document.getElementById('parcel').value = parcelNbr;

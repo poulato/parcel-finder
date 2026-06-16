@@ -8,6 +8,14 @@ var currentListParcels = [];
 var parcelDetailsFromList = false;
 var parcelDetailsFromGrid = false;
 var listParcelSearchQuery = '';
+var listParcelOwnershipFilter = 'all';
+
+var LIST_PARCEL_OWNERSHIP_FILTERS = {
+  all: 'All parcels',
+  full: 'Full ownership',
+  partial: 'Partial ownership',
+  unset: 'Ownership not set'
+};
 
 function isParcelDetailsFromList() {
   return parcelDetailsFromList;
@@ -34,6 +42,35 @@ function leaveParcelDetailsFromList() {
   parcelDetailsFromGrid = false;
   var btn = document.getElementById('backToListParcels');
   if (btn) btn.classList.add('hidden');
+}
+
+function preloadListContextFromURL() {
+  var params = new URLSearchParams(window.location.search);
+  var listId = params.get('list');
+  if (!listId || !params.get('parcel')) return;
+  enterParcelDetailsFromList();
+  if (params.get('grid') === '1') parcelDetailsFromGrid = true;
+}
+
+function restoreListContextIfNeeded() {
+  if (parcelDetailsFromList) {
+    highlightListNav();
+    return;
+  }
+  var params = new URLSearchParams(window.location.search);
+  var listId = params.get('list');
+  if (!listId || !params.get('parcel')) return;
+
+  enterParcelDetailsFromList();
+  if (params.get('grid') === '1') parcelDetailsFromGrid = true;
+
+  if (currentListId !== listId || !currentListParcels.length) {
+    openListParcels(listId, undefined, { skipTabSwitch: true }).then(function() {
+      highlightListNav();
+    });
+  } else {
+    highlightListNav();
+  }
 }
 
 function highlightListNav() {
@@ -270,7 +307,8 @@ document.addEventListener('click', function() {
   if (detailDrop) detailDrop.classList.add('hidden');
 });
 
-async function openListParcels(listId, role) {
+async function openListParcels(listId, role, options) {
+  options = options || {};
   var list = userLists.find(function(l) { return l.id === listId; });
   var isShared = false;
   if (!list) {
@@ -305,7 +343,7 @@ async function openListParcels(listId, role) {
   var detailMenu = document.querySelector('.list-detail-menu');
   if (detailMenu) detailMenu.style.display = isOwner ? '' : 'none';
 
-  switchTab('listParcels');
+  if (!options.skipTabSwitch) switchTab('listParcels');
 
   try {
     var res = await authFetch(API_BASE + '/lists/' + encodeURIComponent(listId) + '/parcels');
@@ -418,6 +456,91 @@ function clearListParcelSearch() {
   listParcelSearchQuery = '';
   var el = document.getElementById('listParcelSearch');
   if (el) el.value = '';
+  listParcelOwnershipFilter = 'all';
+  updateListParcelFilterUI();
+}
+
+function hasParcelOwnershipData(item) {
+  if (!item) return false;
+  if (item.ownership_fraction) return true;
+  return item.ownership_pct != null && item.ownership_pct !== '';
+}
+
+function isParcelPartialOwnership(item) {
+  if (!hasParcelOwnershipData(item)) return false;
+  return typeof isFullOwnership !== 'function' || !isFullOwnership(item);
+}
+
+function parcelMatchesOwnershipFilter(item) {
+  switch (listParcelOwnershipFilter) {
+    case 'full':
+      return typeof isFullOwnership === 'function' && isFullOwnership(item);
+    case 'partial':
+      return isParcelPartialOwnership(item);
+    case 'unset':
+      return !hasParcelOwnershipData(item);
+    default:
+      return true;
+  }
+}
+
+function isListParcelOwnershipFilterActive() {
+  return listParcelOwnershipFilter !== 'all';
+}
+
+function updateListParcelFilterUI() {
+  var active = isListParcelOwnershipFilterActive();
+  var label = LIST_PARCEL_OWNERSHIP_FILTERS[listParcelOwnershipFilter] || 'Filter';
+  document.querySelectorAll('.list-parcel-filter-btn').forEach(function(btn) {
+    var textEl = btn.querySelector('.list-parcel-filter-btn-text');
+    if (textEl) textEl.textContent = active ? label : 'Filter';
+    btn.classList.toggle('is-active', active);
+  });
+  document.querySelectorAll('.list-parcel-filter-dropdown').forEach(function(drop) {
+    drop.querySelectorAll('[data-ownership-filter]').forEach(function(opt) {
+      opt.classList.toggle('is-selected', opt.getAttribute('data-ownership-filter') === listParcelOwnershipFilter);
+    });
+  });
+}
+
+function closeListParcelFilterDropdowns() {
+  document.querySelectorAll('.list-parcel-filter-dropdown').forEach(function(d) {
+    d.classList.add('hidden');
+  });
+  document.querySelectorAll('.list-parcel-filter-btn').forEach(function(btn) {
+    btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function toggleListParcelFilterDropdown(btn) {
+  var menu = btn.parentElement.querySelector('.list-parcel-filter-dropdown');
+  if (!menu) return;
+  var wasHidden = menu.classList.contains('hidden');
+  closeAllListMenus();
+  closeAllParcelMenus();
+  closeListParcelFilterDropdowns();
+  if (wasHidden) {
+    menu.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function setListParcelOwnershipFilter(value) {
+  listParcelOwnershipFilter = value || 'all';
+  updateListParcelFilterUI();
+  applyListParcelFilters();
+}
+
+function parcelMatchesListFilters(item) {
+  if (!parcelMatchesListSearch(item, getListParcelSearchQuery())) return false;
+  return parcelMatchesOwnershipFilter(item);
+}
+
+function applyListParcelFilters() {
+  renderListParcels(currentListCanEdit);
+  var gridPanel = document.getElementById('parcelGridPanel');
+  if (gridPanel && !gridPanel.classList.contains('hidden')) renderParcelGridTable();
+  updateListParcelSearchUI(currentListCanEdit);
 }
 
 function getListParcelSearchQuery() {
@@ -441,10 +564,8 @@ function parcelMatchesListSearch(item, query) {
 }
 
 function getFilteredListParcels() {
-  var query = getListParcelSearchQuery();
-  if (!query) return currentListParcels;
   return currentListParcels.filter(function(item) {
-    return parcelMatchesListSearch(item, query);
+    return parcelMatchesListFilters(item);
   });
 }
 
@@ -453,9 +574,12 @@ function updateListParcelSearchUI(canEdit) {
   var wrap = document.getElementById('listParcelSearchWrap');
   var hasParcels = currentListParcels.length > 0;
   if (wrap) wrap.style.display = hasParcels ? '' : 'none';
-  var isSearching = getListParcelSearchQuery().length > 0;
+  document.querySelectorAll('.list-parcel-filter-menu').forEach(function(el) {
+    el.style.display = hasParcels ? '' : 'none';
+  });
+  var isFiltering = getListParcelSearchQuery().length > 0 || isListParcelOwnershipFilterActive();
   var reorderHint = document.getElementById('listReorderHint');
-  if (reorderHint) reorderHint.classList.toggle('hidden', !canEdit || !hasParcels || isSearching);
+  if (reorderHint) reorderHint.classList.toggle('hidden', !canEdit || !hasParcels || isFiltering);
 }
 
 function renderListParcels(canEdit) {
@@ -487,6 +611,52 @@ function parcelGridCell(value, className) {
   return '<td class="' + cls + '">' + inner + '</td>';
 }
 
+function parcelGridRegDisplay(item) {
+  if (typeof displayRegistration === 'function') {
+    var reg = displayRegistration(item.registration_block, item.registration_no);
+    if (reg) return reg;
+  }
+  if (item.registration_no) {
+    return typeof formatRegistrationNo === 'function'
+      ? formatRegistrationNo(item.registration_no)
+      : normParcelGridVal(item.registration_no);
+  }
+  return '';
+}
+
+async function enrichMissingRegistrationsForGrid() {
+  if (typeof resolveParcelFeature !== 'function' || typeof resolveRegistrationForAttrs !== 'function') return;
+  var targets = currentListParcels.filter(function(item) {
+    return !parcelGridRegDisplay(item);
+  });
+  if (!targets.length) return;
+  for (var i = 0; i < targets.length; i++) {
+    var item = targets[i];
+    try {
+      var feature = await resolveParcelFeature(
+        normParcelGridVal(item.sheet),
+        normParcelGridVal(item.plan_nbr),
+        normParcelGridVal(item.parcel_nbr),
+        item.dist_code,
+        item.municipality
+      );
+      if (!feature) continue;
+      var seed = typeof registrationMetaFromItem === 'function'
+        ? registrationMetaFromItem(item)
+        : {};
+      var regMeta = await resolveRegistrationForAttrs(seed, feature.attributes);
+      if (regMeta.registration_no || regMeta.registration_block != null) {
+        item.registration_no = regMeta.registration_no || item.registration_no;
+        item.registration_block = regMeta.registration_block != null
+          ? regMeta.registration_block
+          : item.registration_block;
+      }
+    } catch (err) { /* skip failed lookups */ }
+  }
+  var panel = document.getElementById('parcelGridPanel');
+  if (panel && !panel.classList.contains('hidden')) renderParcelGridTable();
+}
+
 function openParcelGridModal() {
   var panel = document.getElementById('parcelGridPanel');
   if (!panel) return;
@@ -500,6 +670,7 @@ function openParcelGridModal() {
   document.body.classList.add('parcel-grid-open');
   panel.classList.remove('hidden');
   panel.setAttribute('aria-hidden', 'false');
+  enrichMissingRegistrationsForGrid();
 }
 
 function closeParcelGridModal() {
@@ -561,7 +732,7 @@ function renderParcelGridTable() {
     }
   }
   if (!parcels.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="parcel-grid-empty">No parcels to show</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="parcel-grid-empty">No parcels to show</td></tr>';
     if (foot) foot.classList.add('hidden');
     return;
   }
@@ -569,9 +740,10 @@ function renderParcelGridTable() {
     var block = typeof displayBlockCode === 'function'
       ? displayBlockCode(item.block_code)
       : normParcelGridVal(item.block_code);
-    var regNo = typeof formatRegistrationNo === 'function'
-      ? formatRegistrationNo(item.registration_no)
-      : normParcelGridVal(item.registration_no);
+    var regNo = parcelGridRegDisplay(item);
+    var area = (item.area_sqm != null && item.area_sqm !== '' && typeof formatAreaSqm === 'function')
+      ? formatAreaSqm(item.area_sqm)
+      : '';
     var share = typeof formatOwnershipDisplay === 'function'
       ? formatOwnershipDisplay(item)
       : '';
@@ -585,6 +757,7 @@ function renderParcelGridTable() {
     return (
       '<tr class="parcel-grid-row" data-parcel-id="' + item.id + '">' +
         parcelGridCell(String(index + 1), 'col-num') +
+        parcelGridCell(item.parcel_title, 'col-text') +
         parcelGridCell(item.district) +
         parcelGridCell(item.municipality) +
         parcelGridCell(normParcelGridVal(item.sheet), 'col-cadastral') +
@@ -592,8 +765,8 @@ function renderParcelGridTable() {
         parcelGridCell(block, 'col-cadastral') +
         parcelGridCell(normParcelGridVal(item.parcel_nbr), 'col-cadastral') +
         parcelGridCell(regNo, 'col-cadastral') +
+        parcelGridCell(area, 'col-cadastral') +
         parcelGridCell(share, shareClass) +
-        parcelGridCell(item.parcel_title, 'col-text') +
         parcelGridCell(item.location_note, 'col-text') +
         parcelGridCell(value, 'col-value') +
       '</tr>'
@@ -772,11 +945,27 @@ var listParcelSearchEl = document.getElementById('listParcelSearch');
 if (listParcelSearchEl) {
   listParcelSearchEl.addEventListener('input', function() {
     listParcelSearchQuery = this.value.trim();
-    renderListParcels(currentListCanEdit);
-    var gridPanel = document.getElementById('parcelGridPanel');
-    if (gridPanel && !gridPanel.classList.contains('hidden')) renderParcelGridTable();
+    applyListParcelFilters();
   });
 }
+
+document.addEventListener('click', function(e) {
+  var filterBtn = e.target.closest('.list-parcel-filter-btn');
+  if (filterBtn) {
+    e.stopPropagation();
+    toggleListParcelFilterDropdown(filterBtn);
+    return;
+  }
+  var filterOpt = e.target.closest('[data-ownership-filter]');
+  if (filterOpt && filterOpt.closest('.list-parcel-filter-dropdown')) {
+    setListParcelOwnershipFilter(filterOpt.getAttribute('data-ownership-filter'));
+    closeListParcelFilterDropdowns();
+    return;
+  }
+  if (!e.target.closest('.list-parcel-filter-menu')) {
+    closeListParcelFilterDropdowns();
+  }
+});
 
 var showParcelGridBtn = document.getElementById('showParcelGridBtn');
 if (showParcelGridBtn) {
@@ -797,8 +986,7 @@ if (parcelGridSearchEl) {
     listParcelSearchQuery = this.value.trim();
     var listSearch = document.getElementById('listParcelSearch');
     if (listSearch) listSearch.value = this.value;
-    renderParcelGridTable();
-    updateListParcelSearchUI(currentListCanEdit);
+    applyListParcelFilters();
   });
 }
 
