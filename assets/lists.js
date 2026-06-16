@@ -6,6 +6,8 @@ var currentListId = null;
 var currentListRole = null;
 var currentListParcels = [];
 var parcelDetailsFromList = false;
+var parcelDetailsFromGrid = false;
+var listParcelSearchQuery = '';
 
 function isParcelDetailsFromList() {
   return parcelDetailsFromList;
@@ -29,6 +31,7 @@ function enterParcelDetailsFromList() {
 
 function leaveParcelDetailsFromList() {
   parcelDetailsFromList = false;
+  parcelDetailsFromGrid = false;
   var btn = document.getElementById('backToListParcels');
   if (btn) btn.classList.add('hidden');
 }
@@ -292,7 +295,11 @@ async function openListParcels(listId, role) {
   document.getElementById('listDetailDropdown').classList.add('hidden');
   document.getElementById('listParcels').innerHTML = '';
   document.getElementById('listParcelsEmpty').style.display = 'none';
+  document.getElementById('listParcelsSearchEmpty').style.display = 'none';
+  clearListParcelSearch();
   document.getElementById('showAllParcelsBtn').style.display = 'none';
+  var gridBtn = document.getElementById('showParcelGridBtn');
+  if (gridBtn) gridBtn.style.display = 'none';
   currentListParcels = [];
 
   var detailMenu = document.querySelector('.list-detail-menu');
@@ -306,14 +313,15 @@ async function openListParcels(listId, role) {
     var parcels = await res.json();
     if (!parcels.length) {
       document.getElementById('listParcelsEmpty').style.display = 'block';
+      updateListParcelSearchUI(canEdit);
       var emptyHint = document.getElementById('listReorderHint');
       if (emptyHint) emptyHint.classList.add('hidden');
       return;
     }
     currentListParcels = parcels;
     document.getElementById('showAllParcelsBtn').style.display = '';
-    var reorderHint = document.getElementById('listReorderHint');
-    if (reorderHint) reorderHint.classList.toggle('hidden', !canEdit);
+    if (gridBtn) gridBtn.style.display = '';
+    updateListParcelSearchUI(canEdit);
     renderListParcels(canEdit);
   } catch (err) {
     console.error(err);
@@ -406,12 +414,190 @@ function updateListNoteLinePreview(parcelId, noteVal) {
   line.innerHTML = buildListNoteLineInnerHTML(noteVal);
 }
 
+function clearListParcelSearch() {
+  listParcelSearchQuery = '';
+  var el = document.getElementById('listParcelSearch');
+  if (el) el.value = '';
+}
+
+function getListParcelSearchQuery() {
+  var el = document.getElementById('listParcelSearch');
+  return el ? el.value.trim() : listParcelSearchQuery;
+}
+
+function parcelMatchesListSearch(item, query) {
+  if (!query) return true;
+  var q = query.toLowerCase();
+  var fields = [
+    item.parcel_title,
+    item.location_note,
+    item.municipality,
+    item.district,
+    item.quarter
+  ];
+  return fields.some(function(v) {
+    return v && String(v).toLowerCase().indexOf(q) >= 0;
+  });
+}
+
+function getFilteredListParcels() {
+  var query = getListParcelSearchQuery();
+  if (!query) return currentListParcels;
+  return currentListParcels.filter(function(item) {
+    return parcelMatchesListSearch(item, query);
+  });
+}
+
+function updateListParcelSearchUI(canEdit) {
+  canEdit = canEdit != null ? canEdit : currentListCanEdit;
+  var wrap = document.getElementById('listParcelSearchWrap');
+  var hasParcels = currentListParcels.length > 0;
+  if (wrap) wrap.style.display = hasParcels ? '' : 'none';
+  var isSearching = getListParcelSearchQuery().length > 0;
+  var reorderHint = document.getElementById('listReorderHint');
+  if (reorderHint) reorderHint.classList.toggle('hidden', !canEdit || !hasParcels || isSearching);
+}
+
 function renderListParcels(canEdit) {
   if (listParcelDragId) return;
   var container = document.getElementById('listParcels');
   if (!container) return;
-  container.innerHTML = currentListParcels.map(function(item) {
+  var filtered = getFilteredListParcels();
+  var searchEmptyEl = document.getElementById('listParcelsSearchEmpty');
+  var listEmptyEl = document.getElementById('listParcelsEmpty');
+  if (searchEmptyEl) {
+    searchEmptyEl.style.display = (currentListParcels.length && filtered.length === 0) ? 'block' : 'none';
+  }
+  if (listEmptyEl && currentListParcels.length) listEmptyEl.style.display = 'none';
+  updateListParcelSearchUI(canEdit);
+  container.innerHTML = filtered.map(function(item) {
     return renderParcelItem(item, canEdit);
+  }).join('');
+}
+
+function normParcelGridVal(v) {
+  return String(v == null ? '' : v).replace(/\.0$/, '');
+}
+
+function parcelGridCell(value, className) {
+  var cls = className || '';
+  var inner = value
+    ? escapeHTML(value)
+    : '<span class="parcel-grid-muted">—</span>';
+  return '<td class="' + cls + '">' + inner + '</td>';
+}
+
+function openParcelGridModal() {
+  var panel = document.getElementById('parcelGridPanel');
+  if (!panel) return;
+  var titleEl = document.getElementById('parcelGridPanelTitle');
+  var listTitle = document.getElementById('listParcelsTitle');
+  if (titleEl && listTitle) titleEl.textContent = listTitle.textContent || 'Parcels';
+  var gridSearch = document.getElementById('parcelGridSearch');
+  var listSearch = document.getElementById('listParcelSearch');
+  if (gridSearch && listSearch) gridSearch.value = listSearch.value;
+  renderParcelGridTable();
+  document.body.classList.add('parcel-grid-open');
+  panel.classList.remove('hidden');
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+function closeParcelGridModal() {
+  var panel = document.getElementById('parcelGridPanel');
+  if (panel) {
+    panel.classList.add('hidden');
+    panel.setAttribute('aria-hidden', 'true');
+  }
+  document.body.classList.remove('parcel-grid-open');
+}
+
+function sumParcelGridValues(parcels) {
+  var sum = 0;
+  var count = 0;
+  parcels.forEach(function(item) {
+    if (item.parcel_value != null && item.parcel_value !== '') {
+      var n = Number(item.parcel_value);
+      if (!isNaN(n)) {
+        sum += n;
+        count++;
+      }
+    }
+  });
+  return { sum: sum, count: count };
+}
+
+function renderParcelGridTable() {
+  var tbody = document.getElementById('parcelGridBody');
+  if (!tbody) return;
+  var parcels = getFilteredListParcels();
+  var valueTotals = sumParcelGridValues(parcels);
+  var meta = document.getElementById('parcelGridPanelMeta');
+  if (meta) {
+    var total = currentListParcels.length;
+    var shown = parcels.length;
+    var parts = [];
+    if (total && shown !== total) {
+      parts.push(shown + ' of ' + total + ' parcels');
+    } else {
+      parts.push(total + (total === 1 ? ' parcel' : ' parcels'));
+    }
+    if (valueTotals.count > 0 && typeof formatParcelValue === 'function') {
+      parts.push('Total ' + formatParcelValue(valueTotals.sum));
+    }
+    meta.textContent = parts.join(' \u2022 ');
+  }
+  var foot = document.getElementById('parcelGridFoot');
+  var sumCell = document.getElementById('parcelGridValueSum');
+  if (foot && sumCell) {
+    if (valueTotals.count > 0 && typeof formatParcelValue === 'function') {
+      sumCell.textContent = formatParcelValue(valueTotals.sum);
+      if (valueTotals.count < parcels.length) {
+        sumCell.textContent += ' (' + valueTotals.count + ' with value)';
+      }
+      foot.classList.remove('hidden');
+    } else {
+      sumCell.textContent = '';
+      foot.classList.add('hidden');
+    }
+  }
+  if (!parcels.length) {
+    tbody.innerHTML = '<tr><td colspan="12" class="parcel-grid-empty">No parcels to show</td></tr>';
+    if (foot) foot.classList.add('hidden');
+    return;
+  }
+  tbody.innerHTML = parcels.map(function(item, index) {
+    var block = typeof displayBlockCode === 'function'
+      ? displayBlockCode(item.block_code)
+      : normParcelGridVal(item.block_code);
+    var regNo = typeof formatRegistrationNo === 'function'
+      ? formatRegistrationNo(item.registration_no)
+      : normParcelGridVal(item.registration_no);
+    var share = typeof formatOwnershipDisplay === 'function'
+      ? formatOwnershipDisplay(item)
+      : '';
+    var value = typeof formatParcelValue === 'function'
+      ? formatParcelValue(item.parcel_value)
+      : '';
+    var shareClass = 'col-share';
+    if (share && typeof isFullOwnership === 'function') {
+      shareClass += isFullOwnership(item) ? ' col-share-full' : ' col-share-partial';
+    }
+    return (
+      '<tr class="parcel-grid-row" data-parcel-id="' + item.id + '">' +
+        parcelGridCell(String(index + 1), 'col-num') +
+        parcelGridCell(item.district) +
+        parcelGridCell(item.municipality) +
+        parcelGridCell(normParcelGridVal(item.sheet), 'col-cadastral') +
+        parcelGridCell(normParcelGridVal(item.plan_nbr), 'col-cadastral') +
+        parcelGridCell(block, 'col-cadastral') +
+        parcelGridCell(normParcelGridVal(item.parcel_nbr), 'col-cadastral') +
+        parcelGridCell(regNo, 'col-cadastral') +
+        parcelGridCell(share, shareClass) +
+        parcelGridCell(item.parcel_title, 'col-text') +
+        parcelGridCell(item.location_note, 'col-text') +
+        parcelGridCell(value, 'col-value') +
+      '</tr>'
+    );
   }).join('');
 }
 
@@ -582,6 +768,63 @@ function closeAllParcelMenus() {
   });
 }
 
+var listParcelSearchEl = document.getElementById('listParcelSearch');
+if (listParcelSearchEl) {
+  listParcelSearchEl.addEventListener('input', function() {
+    listParcelSearchQuery = this.value.trim();
+    renderListParcels(currentListCanEdit);
+    var gridPanel = document.getElementById('parcelGridPanel');
+    if (gridPanel && !gridPanel.classList.contains('hidden')) renderParcelGridTable();
+  });
+}
+
+var showParcelGridBtn = document.getElementById('showParcelGridBtn');
+if (showParcelGridBtn) {
+  showParcelGridBtn.addEventListener('click', function() {
+    if (!currentListParcels.length) return;
+    openParcelGridModal();
+  });
+}
+
+var parcelGridPanelClose = document.getElementById('parcelGridPanelClose');
+if (parcelGridPanelClose) {
+  parcelGridPanelClose.addEventListener('click', closeParcelGridModal);
+}
+
+var parcelGridSearchEl = document.getElementById('parcelGridSearch');
+if (parcelGridSearchEl) {
+  parcelGridSearchEl.addEventListener('input', function() {
+    listParcelSearchQuery = this.value.trim();
+    var listSearch = document.getElementById('listParcelSearch');
+    if (listSearch) listSearch.value = this.value;
+    renderParcelGridTable();
+    updateListParcelSearchUI(currentListCanEdit);
+  });
+}
+
+var parcelGridBody = document.getElementById('parcelGridBody');
+if (parcelGridBody) {
+  parcelGridBody.addEventListener('click', function(e) {
+    var row = e.target.closest('.parcel-grid-row');
+    if (!row) return;
+    var parcelId = row.getAttribute('data-parcel-id');
+    var item = currentListParcels.find(function(p) { return p.id === parcelId; });
+    if (!item) return;
+    closeParcelGridModal();
+    parcelDetailsFromGrid = true;
+    if (typeof openSavedParcelFromList === 'function') {
+      openSavedParcelFromList(item);
+    }
+  });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var panel = document.getElementById('parcelGridPanel');
+    if (panel && !panel.classList.contains('hidden')) closeParcelGridModal();
+  }
+});
+
 document.getElementById('listParcels').addEventListener('input', function(e) {
   var el = e.target.closest('[data-autosave-note]');
   if (!el) return;
@@ -699,9 +942,15 @@ document.getElementById('listParcels').addEventListener('click', async function(
         method: 'DELETE'
       });
       if (!res.ok) throw new Error('failed to remove');
-      removeBtn.closest('.parcel-list-item').remove();
-      var remaining = document.getElementById('listParcels').children.length;
-      if (!remaining) document.getElementById('listParcelsEmpty').style.display = 'block';
+      currentListParcels = currentListParcels.filter(function(p) { return p.id !== id; });
+      if (!currentListParcels.length) {
+        document.getElementById('listParcelsEmpty').style.display = 'block';
+        document.getElementById('listParcelsSearchEmpty').style.display = 'none';
+        document.getElementById('listParcels').innerHTML = '';
+        updateListParcelSearchUI(currentListCanEdit);
+      } else {
+        renderListParcels(currentListCanEdit);
+      }
       await loadLists();
     } catch (err) {
       console.error(err);
@@ -733,6 +982,7 @@ document.getElementById('listParcels').addEventListener('click', async function(
 
 document.getElementById('backToLists').addEventListener('click', function() {
   leaveParcelDetailsFromList();
+  closeParcelGridModal();
   currentListId = null;
   currentListRole = null;
   currentListParcels = [];
@@ -742,10 +992,12 @@ document.getElementById('backToLists').addEventListener('click', function() {
 });
 
 document.getElementById('backToListParcels').addEventListener('click', function() {
+  var fromGrid = parcelDetailsFromGrid;
   leaveParcelDetailsFromList();
   switchTab('listParcels');
   highlightListNav();
   if (typeof openSidebar === 'function') openSidebar();
+  if (fromGrid) openParcelGridModal();
 });
 
 document.getElementById('showAllParcelsBtn').addEventListener('click', function() {
@@ -1180,6 +1432,7 @@ document.getElementById('copyEditLink').addEventListener('click', function() {
 
   container.addEventListener('pointerdown', function(e) {
     if (!e.target.closest('[data-drag-handle]')) return;
+    if (getListParcelSearchQuery()) return;
     var item = e.target.closest('.parcel-list-item');
     if (!item || active) return;
     e.preventDefault();

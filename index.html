@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=122" />
+  <link rel="stylesheet" href="./assets/styles.css?v=134" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -185,10 +185,21 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
             Show All on Map
           </button>
+          <button id="showParcelGridBtn" class="show-all-btn" type="button" style="display:none;" title="Open table view">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            Table View
+          </button>
         </div>
       </div>
       <div class="sidebar-view-scroll">
+        <div id="listParcelSearchWrap" class="list-parcel-search-wrap" style="display:none;">
+          <div class="list-parcel-search-field">
+            <svg class="list-parcel-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="listParcelSearch" placeholder="Search title or location…" autocomplete="off" aria-label="Search parcels by title or location" />
+          </div>
+        </div>
         <div id="listParcelsEmpty" class="parcel-list-empty" style="display:none;">No parcels in this list.</div>
+        <div id="listParcelsSearchEmpty" class="parcel-list-empty" style="display:none;">No parcels match your search.</div>
         <p id="listReorderHint" class="list-reorder-hint hidden">Drag ⋮⋮ to reorder parcels</p>
         <div id="listParcels"></div>
       </div>
@@ -476,6 +487,51 @@
     </div>
   </div>
 
+  <div id="parcelGridPanel" class="parcel-grid-panel hidden" aria-hidden="true">
+    <header class="parcel-grid-toolbar">
+      <div class="parcel-grid-toolbar-center">
+        <h2 id="parcelGridPanelTitle" class="parcel-grid-title"></h2>
+        <p id="parcelGridPanelMeta" class="parcel-grid-meta"></p>
+      </div>
+      <div class="parcel-grid-toolbar-actions">
+        <div class="parcel-grid-search-field">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="parcelGridSearch" placeholder="Filter title or location…" autocomplete="off" aria-label="Filter parcels" />
+        </div>
+        <button type="button" id="parcelGridPanelClose" class="parcel-grid-close-btn" aria-label="Close">&times;</button>
+      </div>
+    </header>
+    <div class="parcel-grid-body">
+      <div class="parcel-grid-table-wrap">
+        <table class="parcel-grid-table">
+          <thead>
+            <tr>
+              <th class="col-num">#</th>
+              <th>City</th>
+              <th>Municipality</th>
+              <th class="col-cadastral">Sheet</th>
+              <th class="col-cadastral">Plan</th>
+              <th class="col-cadastral">Block</th>
+              <th class="col-cadastral">Parcel</th>
+              <th class="col-cadastral">Reg. No.</th>
+              <th>Share</th>
+              <th>Title</th>
+              <th>Location</th>
+              <th class="col-value">Value</th>
+            </tr>
+          </thead>
+          <tbody id="parcelGridBody"></tbody>
+          <tfoot id="parcelGridFoot" class="hidden">
+            <tr class="parcel-grid-total-row">
+              <td colspan="11" class="parcel-grid-total-label">Total value</td>
+              <td id="parcelGridValueSum" class="col-value parcel-grid-total-value"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div id="imageLightbox" class="lightbox-backdrop hidden" onclick="closeLightbox()">
     <button class="lightbox-close" onclick="event.stopPropagation(); closeLightbox();">&times;</button>
     <button class="lightbox-prev" onclick="lightboxPrev(event)">&#8249;</button>
@@ -510,7 +566,7 @@
   </div>
   <script src="./assets/auth.js?v=15" defer></script>
   <script src="./assets/map.js?v=110" defer></script>
-  <script src="./assets/lists.js?v=55" defer></script>
+  <script src="./assets/lists.js?v=64" defer></script>
   <script src="./assets/save.js?v=54" defer></script>
   <script src="./assets/sale.js?v=64" defer></script>
   <script src="./assets/app.js?v=47" defer></script>
