@@ -38,6 +38,21 @@ function parseOwnershipFractionInput(input) {
   return { fraction: `${m[1].trim()}/${m[2].trim()}`, pct };
 }
 
+function normalizeRegistrationNo(v) {
+  if (v == null || v === "") return null;
+  let s = String(v).replace(/\.0$/, "").trim();
+  const slash = s.match(/^(\d+)\s*\/\s*(.+)$/);
+  if (slash) s = String(slash[2]).replace(/\.0$/, "").trim();
+  return s || null;
+}
+
+function normalizeRegistrationBlock(v) {
+  if (v == null || v === "") return null;
+  const b = String(v).replace(/\.0$/, "").trim();
+  if (!b || b === "0") return null;
+  return b;
+}
+
 function base64urlDecode(str) {
   str = str.replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
@@ -618,10 +633,8 @@ export default {
           body.planning_zone ?? null,
           body.planning_zone_desc ?? null,
           body.block_code != null && body.block_code !== '' ? String(body.block_code) : null,
-          body.registration_no ? String(body.registration_no).replace(/\.0$/, '') : null,
-          body.registration_block != null && body.registration_block !== ''
-            ? String(body.registration_block).replace(/\.0$/, '')
-            : null,
+          body.registration_no ? normalizeRegistrationNo(body.registration_no) : null,
+          normalizeRegistrationBlock(body.registration_block),
           sortOrder
         ).run();
       } catch (err) {
@@ -704,12 +717,10 @@ export default {
         ? (body.parcel_value === null || body.parcel_value === '' ? null : Number(body.parcel_value))
         : undefined;
       const registrationNo = body.registration_no !== undefined
-        ? (body.registration_no ? String(body.registration_no).replace(/\.0$/, '') : null)
+        ? normalizeRegistrationNo(body.registration_no)
         : undefined;
       const registrationBlock = body.registration_block !== undefined
-        ? (body.registration_block != null && body.registration_block !== ''
-          ? String(body.registration_block).replace(/\.0$/, '')
-          : null)
+        ? normalizeRegistrationBlock(body.registration_block)
         : undefined;
       if (note === undefined && photoKeys === undefined && areaSqm === undefined && ownershipParsed === undefined && locationNote === undefined && parcelTitle === undefined && parcelValue === undefined && registrationNo === undefined && registrationBlock === undefined) {
         return json({ error: "Nothing to update" }, 400);

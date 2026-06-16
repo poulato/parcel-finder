@@ -175,21 +175,62 @@ function findRegistrationBySbpiId(sbpiId) {
   });
 }
 
-function formatRegistrationNo(v) {
+function stripTrailingZeroFloat(v) {
   if (v == null || v === '') return '';
-  return String(v).replace(/\.0$/, '');
+  return String(v).replace(/\.0$/, '').trim();
+}
+
+function normalizeRegistrationBlock(v) {
+  var b = stripTrailingZeroFloat(v);
+  if (!b || b === '0') return null;
+  return b;
+}
+
+function normalizeRegistrationNo(v) {
+  var s = stripTrailingZeroFloat(v);
+  if (!s) return '';
+  var slashMatch = s.match(/^(\d+)\s*\/\s*(.+)$/);
+  if (slashMatch) return stripTrailingZeroFloat(slashMatch[2]);
+  return s;
+}
+
+function registrationFieldsFromInput(noOrCombined, block) {
+  var s = String(noOrCombined || '').trim();
+  var slashMatch = s.match(/^(\d+)\s*\/\s*(.+)$/);
+  if (slashMatch) {
+    return {
+      registration_no: normalizeRegistrationNo(slashMatch[2]),
+      registration_block: normalizeRegistrationBlock(slashMatch[1])
+    };
+  }
+  return {
+    registration_no: normalizeRegistrationNo(s),
+    registration_block: normalizeRegistrationBlock(block)
+  };
+}
+
+function formatRegistrationMeta(no, block) {
+  var fields = registrationFieldsFromInput(no, block);
+  return {
+    registration_no: fields.registration_no || null,
+    registration_block: fields.registration_block
+  };
+}
+
+function formatRegistrationNo(v) {
+  return normalizeRegistrationNo(v);
 }
 
 function formatRegistrationBlock(v) {
-  if (v == null || v === '') return '';
-  return String(v).replace(/\.0$/, '');
+  var b = normalizeRegistrationBlock(v);
+  return b == null ? '' : b;
 }
 
 function displayRegistration(block, no) {
-  var n = formatRegistrationNo(no);
+  var n = normalizeRegistrationNo(no);
   if (!n) return '';
-  var b = formatRegistrationBlock(block);
-  if (b && b !== '0') return b + ' / ' + n;
+  var b = normalizeRegistrationBlock(block);
+  if (b) return b + ' / ' + n;
   return n;
 }
 
@@ -740,19 +781,13 @@ function updateParcelRegistrationDisplay(block, no) {
 function applyRegistrationMeta(meta, attrs) {
   meta = meta || {};
   if (meta.registration_no) {
-    return {
-      registration_no: formatRegistrationNo(meta.registration_no),
-      registration_block: formatRegistrationBlock(meta.registration_block)
-    };
+    return formatRegistrationMeta(meta.registration_no, meta.registration_block);
   }
   if (!attrs || !attrs.SBPI_ID_NO) return { registration_no: null, registration_block: null };
   return findRegistrationBySbpiId(attrs.SBPI_ID_NO).then(function(data) {
     var row = (data.features || [])[0];
     if (!row) return { registration_no: null, registration_block: null };
-    return {
-      registration_no: formatRegistrationNo(row.attributes.RegistrationNo),
-      registration_block: formatRegistrationBlock(row.attributes.RegistrationBlock)
-    };
+    return formatRegistrationMeta(row.attributes.RegistrationNo, row.attributes.RegistrationBlock);
   });
 }
 
@@ -778,6 +813,7 @@ function showParcel(feature, extra, outlineColor, meta) {
   var attrs = feature.attributes;
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
   var parcelCentroid = centroid(feature.geometry.rings);
+  var regFields = formatRegistrationMeta(meta.registration_no, meta.registration_block);
   currentParcel = {
     sheet: clean(attrs.SHEET),
     plan_nbr: clean(attrs.PLAN_NBR),
@@ -790,8 +826,8 @@ function showParcel(feature, extra, outlineColor, meta) {
     planning_zone_desc: extra.planning_zone_desc || '',
     block_code: resolveBlockCode(attrs, null),
     postal_code: extra.postal_code || '',
-    registration_no: formatRegistrationNo(meta.registration_no) || null,
-    registration_block: formatRegistrationBlock(meta.registration_block) || null,
+    registration_no: regFields.registration_no,
+    registration_block: regFields.registration_block,
     centroid_lat: parcelCentroid[0],
     centroid_lng: parcelCentroid[1],
     geometry_rings: JSON.stringify(feature.geometry.rings)
@@ -892,7 +928,10 @@ function doSearch() {
   var plan = document.getElementById('plan').value.trim();
   var parcelNbr = document.getElementById('parcel').value.trim();
   var regBlockEl = document.getElementById('regBlock');
-  var regBlock = (regBlockEl && regBlockEl.value.trim()) || '0';
+  var regBlockRaw = (regBlockEl && regBlockEl.value.trim()) || '0';
+  var parsedReg = registrationFieldsFromInput(parcelNbr, regBlockRaw);
+  parcelNbr = parsedReg.registration_no || parcelNbr;
+  var regBlock = parsedReg.registration_block != null ? parsedReg.registration_block : (regBlockRaw || '0');
   var distCode = document.getElementById('district').value;
   var muniVal = document.getElementById('municipality').value;
   var vilCode = '';
