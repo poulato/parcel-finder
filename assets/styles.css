@@ -1246,6 +1246,36 @@ body.parcel-grid-open { overflow: hidden; }
   flex-shrink: 0;
   min-height: 32px;
 }
+.details-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.details-print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.details-print-btn:hover {
+  background: #0ea5a0;
+  border-color: #0ea5a0;
+  color: #fff;
+}
+.details-print-btn.hidden { display: none; }
+.details-print-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
 .mobile-panel-toprow {
   display: flex;
   align-items: center;
@@ -1258,6 +1288,9 @@ body.parcel-grid-open { overflow: hidden; }
 .mobile-panel-toprow .back-btn,
 .details-panel-header .back-btn {
   margin-bottom: 0;
+}
+.details-panel-header .back-btn.hidden + .details-panel-header-actions {
+  margin-left: auto;
 }
 .details-panel-header .back-btn.hidden + .mobile-view-close {
   margin-left: auto;
@@ -2216,6 +2249,419 @@ body.parcel-grid-open { overflow: hidden; }
   bottom: 0;
 }
 #map { width: 100%; height: 100%; }
+
+/* Map print preview — full screen, parcel-detail layout */
+.map-print-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: #0b1220;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.map-print-modal.hidden { display: none; }
+body.map-print-preview-open { overflow: hidden; }
+.map-print-sheet {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.map-print-sheet.print-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+.map-print-sheet.print-layout .map-print-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  inset: auto;
+  order: 2;
+}
+.map-print-sheet.print-layout .map-print-sidebar {
+  position: relative;
+  top: auto;
+  left: auto;
+  bottom: auto;
+  width: 280px;
+  flex: 0 0 280px;
+  height: 100%;
+  border-radius: 0;
+  box-shadow: none;
+  order: 1;
+}
+.map-print-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #e5e7eb;
+}
+.map-print-stage #map-wrap {
+  position: absolute !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 1;
+}
+.map-print-snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 5;
+  display: none;
+  background: #e5e7eb;
+}
+.map-print-snapshot:not(.hidden) {
+  display: block;
+}
+.map-print-stage.has-snapshot #map-wrap {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* When live map is mounted for print, make sure snapshot is hidden */
+.map-print-stage #map-wrap:not([style*="display: none"]) ~ .map-print-snapshot {
+  display: none !important;
+}
+.map-print-sidebar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100% - 32px));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  color: #f1f5f9;
+}
+.map-print-sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.map-print-sidebar-heading {
+  min-width: 0;
+  flex: 1;
+}
+.map-print-sidebar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.map-print-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  color: #f1f5f9;
+}
+.map-print-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.map-print-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(148, 163, 184, 0.12);
+  border: none;
+  border-radius: 8px;
+  font-size: 22px;
+  line-height: 1;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 0;
+}
+.map-print-close:hover {
+  background: rgba(148, 163, 184, 0.22);
+  color: #f1f5f9;
+}
+.map-print-sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.map-print-sidebar-scroll::-webkit-scrollbar { display: none; }
+.map-print-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #334155;
+  font-size: 13px;
+  color: #e2e8f0;
+  flex-shrink: 0;
+}
+.map-print-sheet.single-parcel .map-print-legend { display: none; }
+.map-print-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.map-print-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+.map-print-swatch-full {
+  background: rgba(37, 99, 235, 0.35);
+  border-color: #2563eb;
+}
+.map-print-swatch-partial {
+  background: rgba(255, 0, 0, 0.25);
+  border-color: #ff0000;
+}
+.map-print-index {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e2e8f0;
+}
+.map-print-index li {
+  margin-bottom: 8px;
+}
+.map-print-index-num {
+  font-weight: 700;
+  color: #f8fafc;
+}
+.map-print-index.hidden,
+.map-print-details.hidden {
+  display: none;
+}
+.map-print-details {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #f1f5f9;
+}
+.map-print-details h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: #f1f5f9;
+}
+.map-print-details .parcel-title-sub {
+  margin: 0 0 10px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+.map-print-details > div > div,
+.map-print-details .parcel-area-row {
+  margin-bottom: 6px;
+}
+.map-print-details .label {
+  color: #94a3b8;
+  font-weight: 600;
+}
+.map-print-details .value {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+.map-print-details .value.zone-detail {
+  font-weight: 400;
+  font-size: 12px;
+}
+.map-print-details .value.parcel-ownership-full { color: #3b82f6 !important; }
+.map-print-details .value.parcel-ownership-partial { color: #ef4444 !important; }
+.map-print-actions {
+  display: none;
+  flex-shrink: 0;
+}
+.map-print-do-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-print-do-btn:hover { background: #1d4ed8; }
+.map-print-cancel-btn {
+  padding: 10px 20px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.map-print-cancel-btn:hover { background: #475569; }
+
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+
+@media print {
+  html, body {
+    width: 297mm;
+    height: 210mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  body.map-printing > *:not(#mapPrintModal) { display: none !important; }
+  body.map-printing #mapPrintModal {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    max-width: 297mm !important;
+    max-height: 210mm !important;
+    background: #fff !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    page-break-before: avoid;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+  body.map-printing .map-print-modal.hidden { display: block !important; }
+  body.map-printing .map-print-sheet {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 297mm;
+    height: 210mm;
+    max-width: 297mm;
+    max-height: 210mm;
+    overflow: hidden;
+    page-break-inside: avoid;
+    page-break-after: avoid;
+  }
+  body.map-printing .map-print-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    order: 2;
+    width: auto;
+    height: 210mm;
+    page-break-inside: avoid;
+  }
+  body.map-printing .map-print-stage #map-wrap {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    visibility: hidden !important;
+  }
+  body.map-printing .map-print-snapshot {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    z-index: 2;
+    background: #e5e7eb;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body.map-printing .map-print-stage #map,
+  body.map-printing .map-print-stage .leaflet-container {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  body.map-printing .map-print-sidebar {
+    position: relative;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    order: 1;
+    flex: 0 0 68mm;
+    width: 68mm;
+    height: 210mm;
+    padding: 8px 10px;
+    border-radius: 0;
+    box-shadow: none;
+    page-break-inside: avoid;
+    overflow: hidden;
+  }
+  body.map-printing .map-print-sheet.single-parcel .map-print-sidebar-header {
+    display: none !important;
+  }
+  body.map-printing .map-print-sidebar-header {
+    margin-bottom: 4px;
+  }
+  body.map-printing .map-print-title {
+    font-size: 14px;
+  }
+  body.map-printing .map-print-meta {
+    font-size: 9px;
+  }
+  body.map-printing .map-print-sidebar-scroll {
+    overflow: hidden;
+    max-height: calc(210mm - 16px);
+  }
+  body.map-printing .map-print-details {
+    font-size: 9px;
+    line-height: 1.3;
+  }
+  body.map-printing .map-print-details h3 {
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  body.map-printing .map-print-details > div > div,
+  body.map-printing .map-print-details .parcel-area-row {
+    margin-bottom: 3px;
+  }
+  body.map-printing .map-print-index {
+    font-size: 9px;
+    line-height: 1.3;
+    max-height: none;
+    overflow: visible;
+  }
+  body.map-printing .map-print-legend {
+    font-size: 9px;
+    padding-bottom: 6px;
+  }
+  body.map-printing .map-print-close,
+  body.map-printing .map-print-actions,
+  body.map-printing .map-print-sidebar-toolbar { display: none !important; }
+  body.map-printing .map-print-legend,
+  body.map-printing .map-print-swatch,
+  body.map-printing .map-print-sidebar {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body.map-printing .leaflet-control-container { display: none !important; }
+  body.map-printing.map-print-no-snapshot .map-print-stage #map-wrap {
+    visibility: visible !important;
+  }
+  body.map-printing.map-print-no-snapshot .map-print-snapshot {
+    display: none !important;
+  }
+}
 
 /* App-bar menu button (mobile only) */
 #openBtnMobile {

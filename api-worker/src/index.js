@@ -190,6 +190,48 @@ export default {
       return json({ ok: true, service: "geoktimonas-api" });
     }
 
+    if (path === "/api/map-export" && request.method === "GET") {
+      const exportUrl = url.searchParams.get("url") || "";
+      const allowedPrefixes = [
+        "https://server.arcgisonline.com/",
+        "https://eservices.dls.moi.gov.cy/",
+      ];
+      if (!allowedPrefixes.some(function(prefix) { return exportUrl.startsWith(prefix); })) {
+        return json({ error: "Invalid export URL" }, 400, request);
+      }
+      try {
+        const res = await fetch(exportUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/png,image/*,*/*;q=0.8",
+            "Referer": "https://eservices.dls.moi.gov.cy/",
+          },
+          redirect: "follow",
+        });
+        const contentType = res.headers.get("Content-Type") || "image/png";
+        if (!res.ok || !/^image\//i.test(contentType)) {
+          if (url.searchParams.get("debug") === "1") {
+            return json({
+              error: "Export did not return an image",
+              status: res.status,
+              finalUrl: res.url,
+              contentType: contentType,
+            }, 502, request);
+          }
+          return json({ error: "Export failed" }, 502, request);
+        }
+        return new Response(res.body, {
+          headers: {
+            "Content-Type": contentType,
+            "Access-Control-Allow-Origin": getCorsOrigin(request),
+            "Cache-Control": "public, max-age=300",
+          },
+        });
+      } catch (e) {
+        return json({ error: "Export failed", detail: String(e) }, 502, request);
+      }
+    }
+
     if (path === "/api/bazaraki" && request.method === "GET") {
       const bazUrl = url.searchParams.get("url") || "";
       if (!/^https?:\/\/(www\.)?bazaraki\.com\/adv\//.test(bazUrl)) {

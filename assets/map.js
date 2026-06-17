@@ -8,12 +8,12 @@ var map = L.map('map', { maxZoom: 19, zoomControl: false }).setView([35.0, 33.4]
 
 var topoBase = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-  { attribution: 'Esri', maxZoom: 19 }
+  { attribution: 'Esri', maxZoom: 19, crossOrigin: true }
 ).addTo(map);
 
 var satellite = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { attribution: 'Esri', maxZoom: 19 }
+  { attribution: 'Esri', maxZoom: 19, crossOrigin: true }
 );
 
 var dlsLayer = L.esri.dynamicMapLayer({ url: DLS_BASE, opacity: 1, interactive: false }).addTo(map);
@@ -877,6 +877,8 @@ function showParcel(feature, extra, outlineColor, meta) {
   if (!outlineColor && typeof restoreListContextIfNeeded === 'function') {
     restoreListContextIfNeeded();
   }
+
+  if (typeof updateDetailsPrintButton === 'function') updateDetailsPrintButton();
 }
 
 function doClear() {
@@ -897,6 +899,7 @@ function doClear() {
   document.getElementById('plan').value = '';
   document.getElementById('parcel').value = '';
   document.getElementById('regBlock').value = '0';
+  if (typeof updateDetailsPrintButton === 'function') updateDetailsPrintButton();
   document.getElementById('district').value = '';
   populateMunicipalitySelect('');
   document.getElementById('municipality').value = '';
@@ -1456,6 +1459,309 @@ async function openSavedParcelFromList(item) {
   }
 }
 
+function mapColorWithAlpha(color, alpha) {
+  if (!color) return 'rgba(255,0,0,' + alpha + ')';
+  var hex = String(color).replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+  if (hex.length === 6) {
+    var r = parseInt(hex.slice(0, 2), 16);
+    var g = parseInt(hex.slice(2, 4), 16);
+    var b = parseInt(hex.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+  return color;
+}
+
+function flattenLatLngRings(latlngs) {
+  if (!latlngs || !latlngs.length) return [];
+  if (latlngs[0] && latlngs[0].lat !== undefined) {
+    return latlngs.length > 2 ? [latlngs] : [];
+  }
+  var out = [];
+  latlngs.forEach(function(item) {
+    flattenLatLngRings(item).forEach(function(r) { out.push(r); });
+  });
+  return out;
+}
+
+function drawMapPolygonOnCanvas(ctx, layer, highlight) {
+  if (!layer || !layer.getLatLngs) return;
+  var opts = layer.options || {};
+  var stroke = opts.color || '#ff0000';
+  var weight = opts.weight != null ? opts.weight : 4;
+  var fillColor = opts.fillColor || stroke;
+  var maxX = map.getSize().x;
+  var maxY = map.getSize().y;
+  flattenLatLngRings(layer.getLatLngs()).forEach(function(ring) {
+    ctx.beginPath();
+    var hasPoint = false;
+    ring.forEach(function(ll, i) {
+      var wrapped = map.wrapLatLng ? map.wrapLatLng(ll) : ll;
+      var pt = map.latLngToContainerPoint(wrapped);
+      if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return;
+      var x = Math.max(-maxX, Math.min(maxX * 2, pt.x));
+      var y = Math.max(-maxY, Math.min(maxY * 2, pt.y));
+      if (!hasPoint) {
+        ctx.moveTo(x, y);
+        hasPoint = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    if (!hasPoint) return;
+    ctx.closePath();
+    if (highlight) {
+      ctx.fillStyle = mapColorWithAlpha(fillColor, 0.35);
+      ctx.fill();
+    }
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = weight;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  });
+}
+
+function drawMapPolygonsOnCanvas(ctx) {
+  listParcelsGroup.eachLayer(function(layer) {
+    drawMapPolygonOnCanvas(ctx, layer, true);
+  });
+  if (parcelLayer) drawMapPolygonOnCanvas(ctx, parcelLayer, true);
+}
+
+function drawMapTilesOnCanvas(ctx, container, cRect) {
+  var tilePane = map.getPane('tilePane');
+  if (tilePane) {
+    tilePane.querySelectorAll('img.leaflet-tile').forEach(function(tile) {
+      if (!tile.complete || !tile.naturalWidth) return;
+      var pos = L.DomUtil.getPosition(tile);
+      try {
+        ctx.drawImage(tile, pos.x, pos.y, tile.offsetWidth, tile.offsetHeight);
+      } catch (e) { /* cross-origin */ }
+    });
+  }
+  var overlayPane = map.getPane('overlayPane');
+  if (overlayPane) {
+    overlayPane.querySelectorAll('img').forEach(function(img) {
+      if (!img.complete || !img.naturalWidth) return;
+      var r = img.getBoundingClientRect();
+      try {
+        ctx.drawImage(img, r.left - cRect.left, r.top - cRect.top, r.width, r.height);
+      } catch (e) { /* cross-origin */ }
+    });
+  }
+}
+
+function buildMapCaptureCanvas(size, scale, includeTiles) {
+  var canvas = document.createElement('canvas');
+  canvas.width = Math.round(size.x * scale);
+  canvas.height = Math.round(size.y * scale);
+  var ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#dce3e8';
+  ctx.fillRect(0, 0, size.x, size.y);
+  if (includeTiles) {
+    var container = map.getContainer();
+    drawMapTilesOnCanvas(ctx, container, container.getBoundingClientRect());
+  }
+  drawMapPolygonsOnCanvas(ctx);
+  return canvas;
+}
+
+function exportCaptureCanvas(canvas) {
+  try {
+    return canvas.toDataURL('image/jpeg', 0.92);
+  } catch (e) {
+    return null;
+  }
+}
+
+function fetchEsriExportImage(mapServerUrl, bounds, width, height, transparent) {
+  var apiBase = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+  var sw = bounds.getSouthWest();
+  var ne = bounds.getNorthEast();
+  var bbox = sw.lng + ',' + sw.lat + ',' + ne.lng + ',' + ne.lat;
+  var exportUrl = mapServerUrl.replace(/\/$/, '') + '/export?' +
+    'bbox=' + encodeURIComponent(bbox) +
+    '&bboxSR=4326&imageSR=4326' +
+    '&size=' + Math.round(Math.max(width, 1)) + ',' + Math.round(Math.max(height, 1)) +
+    '&format=png&transparent=' + (transparent ? 'true' : 'false') + '&f=image';
+  var proxyUrl = apiBase + '/map-export?url=' + encodeURIComponent(exportUrl);
+  return fetch(proxyUrl).then(function(res) {
+    if (!res.ok) return null;
+    return res.blob();
+  }).then(function(blob) {
+    if (!blob) return null;
+    return new Promise(function(resolve) {
+      var img = new Image();
+      var objUrl = URL.createObjectURL(blob);
+      img.onload = function() {
+        URL.revokeObjectURL(objUrl);
+        resolve(img);
+      };
+      img.onerror = function() {
+        URL.revokeObjectURL(objUrl);
+        resolve(null);
+      };
+      img.src = objUrl;
+    });
+  }).catch(function() { return null; });
+}
+
+function setMapPrintLayout(active) {
+  var sheet = document.getElementById('mapPrintSheet');
+  if (sheet) sheet.classList.toggle('print-layout', !!active);
+}
+
+function buildMapCaptureCanvasFromTiles(size, scale) {
+  var canvas = buildMapCaptureCanvas(size, scale, true);
+  var dataUrl = exportCaptureCanvas(canvas);
+  if (dataUrl) return dataUrl;
+  canvas = buildMapCaptureCanvas(size, scale, false);
+  return exportCaptureCanvas(canvas);
+}
+
+function buildMapCaptureCanvasFromExport(bounds, size, scale) {
+  var exportW = Math.round(size.x * scale);
+  var exportH = Math.round(size.y * scale);
+  return Promise.all([
+    fetchEsriExportImage(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer',
+      bounds, exportW, exportH, false
+    ),
+    fetchEsriExportImage(DLS_BASE, bounds, exportW, exportH, true)
+  ]).then(function(images) {
+    if (!images[0] && !images[1]) return null;
+    var canvas = document.createElement('canvas');
+    canvas.width = exportW;
+    canvas.height = exportH;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#dce3e8';
+    ctx.fillRect(0, 0, exportW, exportH);
+    if (images[0]) ctx.drawImage(images[0], 0, 0, exportW, exportH);
+    if (images[1]) ctx.drawImage(images[1], 0, 0, exportW, exportH);
+    ctx.save();
+    ctx.scale(scale, scale);
+    drawMapPolygonsOnCanvas(ctx);
+    ctx.restore();
+    return exportCaptureCanvas(canvas);
+  });
+}
+
+function waitForDlsReady(timeoutMs) {
+  return new Promise(function(resolve) {
+    if (typeof dlsLayer === 'undefined' || !dlsLayer || !dlsLayer.on) {
+      resolve();
+      return;
+    }
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      if (dlsLayer.off) dlsLayer.off('load', onLoad);
+      resolve();
+    }
+    function onLoad() { setTimeout(finish, 150); }
+    dlsLayer.on('load', onLoad);
+    try {
+      if (dlsLayer.redraw) dlsLayer.redraw();
+    } catch (e) {}
+    setTimeout(finish, timeoutMs || 6000);
+  });
+}
+
+function waitForMapVisualReady(timeoutMs) {
+  return new Promise(function(resolve) {
+    if (!map) { resolve(); return; }
+    var deadline = Date.now() + (timeoutMs || 4500);
+
+    function allImagesLoaded(nodes) {
+      if (!nodes || !nodes.length) return true;
+      for (var i = 0; i < nodes.length; i++) {
+        var img = nodes[i];
+        if (!img.complete || !img.naturalWidth) return false;
+      }
+      return true;
+    }
+
+    function checkReady() {
+      if (Date.now() >= deadline) { resolve(); return; }
+      var size = map.getSize ? map.getSize() : { x: 0, y: 0 };
+      if (!size.x || !size.y) {
+        setTimeout(checkReady, 120);
+        return;
+      }
+      var tilePane = map.getPane ? map.getPane('tilePane') : null;
+      var overlayPane = map.getPane ? map.getPane('overlayPane') : null;
+      var tileImgs = tilePane ? tilePane.querySelectorAll('img.leaflet-tile') : [];
+      var overlayImgs = overlayPane ? overlayPane.querySelectorAll('img') : [];
+      if (allImagesLoaded(tileImgs) && allImagesLoaded(overlayImgs)) {
+        resolve();
+        return;
+      }
+      setTimeout(checkReady, 120);
+    }
+
+    checkReady();
+  });
+}
+
+function captureMapSnapshotForPrint() {
+  return new Promise(function(resolve) {
+    if (!map) { resolve(null); return; }
+
+    // Close any popups/tooltips that would be in the way
+    if (map.closePopup) map.closePopup();
+    map.eachLayer(function(layer) {
+      if (layer.closeTooltip) layer.closeTooltip();
+    });
+
+    // Get current state BEFORE any layout changes
+    var size = map.getSize();
+    var bounds = map.getBounds();
+
+    if (!size || !size.x || !size.y) {
+      // Map has no size, try to get from container
+      var container = map.getContainer();
+      if (container) {
+        size = { x: container.clientWidth || 800, y: container.clientHeight || 600 };
+      }
+    }
+
+    if (!size || !size.x || !size.y || !bounds) {
+      resolve(null);
+      return;
+    }
+
+    var scale = 2;
+
+    // Try server-side export first (most reliable for print)
+    buildMapCaptureCanvasFromExport(bounds, size, scale).then(function(dataUrl) {
+      if (dataUrl) {
+        resolve(dataUrl);
+        return;
+      }
+      // Fallback: try to capture current visible tiles
+      try {
+        var canvas = buildMapCaptureCanvas(size, scale, true);
+        var fallback = exportCaptureCanvas(canvas);
+        resolve(fallback);
+      } catch (e) {
+        resolve(null);
+      }
+    }).catch(function() {
+      // Export failed, try live tile capture
+      try {
+        var canvas = buildMapCaptureCanvas(size, scale, true);
+        var fallback = exportCaptureCanvas(canvas);
+        resolve(fallback);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+}
+
 function clearListParcels() {
   listParcelsGroup.clearLayers();
   listParcelMapLayers = {};
@@ -1501,14 +1807,16 @@ function showAllListParcels(parcels) {
   currentParcel = null;
 
   var btn = document.getElementById('showAllParcelsBtn');
-  btn.disabled = true;
-  btn.textContent = 'Loading...';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+  }
 
   var queries = parcels.map(function(p) {
     return resolveParcelFeature(p.sheet, p.plan_nbr, p.parcel_nbr, p.dist_code, p.municipality);
   });
 
-  Promise.all(queries).then(function(features) {
+  return Promise.all(queries).then(function(features) {
     var bounds = L.latLngBounds([]);
     features.forEach(function(feature, i) {
       var item = parcels[i];
@@ -1553,10 +1861,12 @@ function showAllListParcels(parcels) {
   }).catch(function(err) {
     console.error('Show all failed:', err);
   }).then(function() {
-    btn.disabled = false;
-    btn.innerHTML =
-      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg> ' +
-      'Show All on Map';
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg> ' +
+        'Show All on Map';
+    }
   });
 }
 

@@ -15,7 +15,7 @@
   <meta name="twitter:title" content="Geoktimonas – Cyprus Land Parcel Finder" />
   <meta name="twitter:description" content="Search Cyprus land parcels on the DLS cadastral map. Browse land for sale." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./assets/styles.css?v=136" />
+  <link rel="stylesheet" href="./assets/styles.css?v=152" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -189,6 +189,10 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
             Table View
           </button>
+          <button id="printMapBtn" class="show-all-btn" type="button" style="display:none;" title="Preview map for printing">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print
+          </button>
         </div>
       </div>
       <div class="sidebar-view-scroll">
@@ -296,7 +300,13 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           Back to List
         </button>
-        <button type="button" class="mobile-view-close" onclick="closeSidebar()" aria-label="Close">&times;</button>
+        <div class="details-panel-header-actions">
+          <button id="detailsPrintBtn" class="details-print-btn hidden" type="button" title="Preview map for printing">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print
+          </button>
+          <button type="button" class="mobile-view-close" onclick="closeSidebar()" aria-label="Close">&times;</button>
+        </div>
       </div>
       <div class="sidebar-view-scroll">
         <div id="detailsContent"></div>
@@ -411,6 +421,37 @@
       <span>List</span>
     </button>
   </nav>
+
+  <div id="mapPrintModal" class="map-print-modal hidden" aria-hidden="true">
+    <div id="mapPrintSheet" class="map-print-sheet">
+      <div id="mapPrintStage" class="map-print-stage">
+        <img id="mapPrintSnapshot" class="map-print-snapshot hidden" alt="Map snapshot" />
+      </div>
+      <aside class="map-print-sidebar">
+        <header class="map-print-sidebar-header">
+          <div class="map-print-sidebar-heading">
+            <h2 id="mapPrintTitle" class="map-print-title"></h2>
+            <p id="mapPrintMeta" class="map-print-meta"></p>
+          </div>
+          <div class="map-print-sidebar-toolbar">
+            <button type="button" id="mapPrintDoPrint" class="map-print-do-btn">Print</button>
+            <button type="button" id="mapPrintClose" class="map-print-close" aria-label="Close">&times;</button>
+          </div>
+        </header>
+        <div class="map-print-sidebar-scroll">
+          <div class="map-print-legend">
+            <span class="map-print-legend-item"><span class="map-print-swatch map-print-swatch-full"></span> Full ownership</span>
+            <span class="map-print-legend-item"><span class="map-print-swatch map-print-swatch-partial"></span> Partial ownership</span>
+          </div>
+          <ol id="mapPrintIndex" class="map-print-index"></ol>
+          <div id="mapPrintDetails" class="map-print-details hidden"></div>
+        </div>
+        <div class="map-print-actions">
+          <button type="button" id="mapPrintCancel" class="map-print-cancel-btn">Close preview</button>
+        </div>
+      </aside>
+    </div>
+  </div>
 
   <div id="saveModal" class="modal-backdrop hidden">
     <div class="modal-card save-modal-card">
@@ -592,8 +633,8 @@
     </div>
   </div>
   <script src="./assets/auth.js?v=15" defer></script>
-  <script src="./assets/map.js?v=112" defer></script>
-  <script src="./assets/lists.js?v=69" defer></script>
+  <script src="./assets/map.js?v=125" defer></script>
+  <script src="./assets/lists.js?v=89" defer></script>
   <script src="./assets/save.js?v=54" defer></script>
   <script src="./assets/sale.js?v=64" defer></script>
   <script src="./assets/app.js?v=49" defer></script>

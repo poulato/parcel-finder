@@ -338,6 +338,8 @@ async function openListParcels(listId, role, options) {
   document.getElementById('showAllParcelsBtn').style.display = 'none';
   var gridBtn = document.getElementById('showParcelGridBtn');
   if (gridBtn) gridBtn.style.display = 'none';
+  var printMapBtn = document.getElementById('printMapBtn');
+  if (printMapBtn) printMapBtn.style.display = 'none';
   currentListParcels = [];
 
   var detailMenu = document.querySelector('.list-detail-menu');
@@ -359,6 +361,7 @@ async function openListParcels(listId, role, options) {
     currentListParcels = parcels;
     document.getElementById('showAllParcelsBtn').style.display = '';
     if (gridBtn) gridBtn.style.display = '';
+    if (printMapBtn) printMapBtn.style.display = '';
     updateListParcelSearchUI(canEdit);
     renderListParcels(canEdit);
   } catch (err) {
@@ -697,6 +700,513 @@ function sumParcelGridValues(parcels) {
   return { sum: sum, count: count };
 }
 
+function buildParcelGridRowHTML(item, index, forPrint) {
+  var block = typeof displayBlockCode === 'function'
+    ? displayBlockCode(item.block_code)
+    : normParcelGridVal(item.block_code);
+  var regNo = parcelGridRegDisplay(item);
+  var area = (item.area_sqm != null && item.area_sqm !== '' && typeof formatAreaSqm === 'function')
+    ? formatAreaSqm(item.area_sqm)
+    : '';
+  var share = typeof formatOwnershipDisplay === 'function'
+    ? formatOwnershipDisplay(item)
+    : '';
+  var value = typeof formatParcelValue === 'function'
+    ? formatParcelValue(item.parcel_value)
+    : '';
+  var shareClass = forPrint ? 'col-share' : 'col-share';
+  if (share && typeof isFullOwnership === 'function') {
+    shareClass += isFullOwnership(item) ? ' col-share-full' : ' col-share-partial';
+  }
+  var rowAttrs = forPrint
+    ? ''
+    : ' class="parcel-grid-row" data-parcel-id="' + item.id + '"';
+  return (
+    '<tr' + rowAttrs + '>' +
+      parcelGridCell(String(index + 1), 'col-num') +
+      parcelGridCell(item.parcel_title, 'col-text') +
+      parcelGridCell(item.district) +
+      parcelGridCell(item.municipality) +
+      parcelGridCell(normParcelGridVal(item.sheet), 'col-cadastral') +
+      parcelGridCell(normParcelGridVal(item.plan_nbr), 'col-cadastral') +
+      parcelGridCell(block, 'col-cadastral') +
+      parcelGridCell(normParcelGridVal(item.parcel_nbr), 'col-cadastral') +
+      parcelGridCell(regNo, 'col-cadastral') +
+      parcelGridCell(area, 'col-cadastral') +
+      parcelGridCell(share, shareClass) +
+      parcelGridCell(item.location_note, 'col-text') +
+      parcelGridCell(value, 'col-value') +
+    '</tr>'
+  );
+}
+
+var mapPrintRestore = null;
+var mapPrintReturnContext = null;
+
+var PRINT_BTN_INNER_HTML =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print';
+
+function setPrintButtonLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = PRINT_BTN_INNER_HTML;
+  }
+}
+
+function updateDetailsPrintButton() {
+  var btn = document.getElementById('detailsPrintBtn');
+  if (!btn) return;
+  var show = typeof currentParcel !== 'undefined' && !!currentParcel;
+  btn.classList.toggle('hidden', !show);
+}
+
+function buildPrintItemFromCurrentParcel() {
+  if (typeof findListParcelForCurrentParcel === 'function') {
+    var listItem = findListParcelForCurrentParcel();
+    if (listItem) return listItem;
+  }
+  if (typeof parcelSavedRecords !== 'undefined' && parcelSavedRecords.length) {
+    return parcelSavedRecords[0];
+  }
+  return Object.assign({}, currentParcel);
+}
+
+function finishMapPrintPreview(btn, title, metaParts, parcels, singleParcel) {
+  var titleTarget = document.getElementById('mapPrintTitle');
+  var metaTarget = document.getElementById('mapPrintMeta');
+  var sheet = document.getElementById('mapPrintSheet');
+  if (titleTarget) titleTarget.textContent = title;
+  if (metaTarget) metaTarget.textContent = metaParts.join(' \u2022 ');
+  if (sheet) {
+    sheet.classList.toggle('single-parcel', !!singleParcel);
+    sheet.classList.toggle('list-parcels', !singleParcel);
+  }
+  if (singleParcel) {
+    buildMapPrintDetails();
+  } else {
+    resetMapPrintDetailsPanel();
+    buildMapPrintIndex(parcels);
+  }
+  mountMapInPrintPreview();
+  var modal = document.getElementById('mapPrintModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+  document.body.classList.add('map-print-preview-open');
+  setPrintButtonLoading(btn, false);
+}
+
+function resetMapPrintDetailsPanel() {
+  var details = document.getElementById('mapPrintDetails');
+  var index = document.getElementById('mapPrintIndex');
+  if (details) {
+    details.classList.add('hidden');
+    details.innerHTML = '';
+  }
+  if (index) index.classList.remove('hidden');
+}
+
+function buildMapPrintDetails() {
+  var source = document.getElementById('detailsContent');
+  var target = document.getElementById('mapPrintDetails');
+  var index = document.getElementById('mapPrintIndex');
+  if (!source || !target) return;
+  if (index) {
+    index.classList.add('hidden');
+    index.innerHTML = '';
+  }
+  target.classList.remove('hidden');
+  var clone = source.cloneNode(true);
+  clone.querySelectorAll(
+    'button, input, textarea, select, .hidden, .parcel-area-editor, .parcel-external-links, ' +
+    '#detailsActions, #parcelPhotosSection, .parcel-details-note-section, .parcel-meta-edit-btn, ' +
+    '.saved-parcel-extra'
+  ).forEach(function(el) { el.remove(); });
+  var titleHeader = clone.querySelector('.parcel-title-header');
+  if (titleHeader && !titleHeader.textContent.trim()) titleHeader.remove();
+  target.innerHTML = '';
+  target.appendChild(clone);
+}
+
+function buildMapPrintIndex(parcels) {
+  var list = document.getElementById('mapPrintIndex');
+  if (!list) return;
+  list.innerHTML = parcels.map(function(item, index) {
+    var refLine = typeof formatParcelRefLine === 'function'
+      ? formatParcelRefLine(item)
+      : 'Parcel ' + item.parcel_nbr;
+    var title = item.parcel_title ? escapeHTML(item.parcel_title) + ' \u2014 ' : '';
+    var loc = escapeHTML(item.municipality || item.district || '');
+    var share = typeof formatOwnershipDisplay === 'function'
+      ? formatOwnershipDisplay(item)
+      : '';
+    var sharePart = share ? ' \u2022 ' + escapeHTML(share) : '';
+    var note = item.location_note
+      ? ' \u2022 ' + escapeHTML(notePreviewSingleLine(item.location_note))
+      : '';
+    return (
+      '<li><span class="map-print-index-num">' + (index + 1) + '.</span> ' +
+      title + escapeHTML(refLine) +
+      (loc ? ' \u2022 ' + loc : '') +
+      sharePart + note +
+      '</li>'
+    );
+  }).join('');
+}
+
+function mountMapInPrintPreview() {
+  var mapWrap = document.getElementById('map-wrap');
+  var stage = document.getElementById('mapPrintStage');
+  if (!mapWrap || !stage || mapPrintRestore) return;
+  mapPrintRestore = {
+    parent: mapWrap.parentNode,
+    next: mapWrap.nextSibling
+  };
+  stage.appendChild(mapWrap);
+  setTimeout(function() {
+    if (typeof map !== 'undefined' && map.invalidateSize) map.invalidateSize();
+  }, 150);
+}
+
+function restoreMapFromPrintPreview() {
+  var mapWrap = document.getElementById('map-wrap');
+  if (!mapWrap || !mapPrintRestore) return;
+  if (mapPrintRestore.next) {
+    mapPrintRestore.parent.insertBefore(mapWrap, mapPrintRestore.next);
+  } else {
+    mapPrintRestore.parent.appendChild(mapWrap);
+  }
+  mapPrintRestore = null;
+  setTimeout(function() {
+    if (typeof map !== 'undefined' && map.invalidateSize) map.invalidateSize();
+  }, 150);
+}
+
+function restoreViewAfterPrintPreview() {
+  var ctx = mapPrintReturnContext;
+  mapPrintReturnContext = null;
+  if (!ctx) return;
+
+  function finishRestore() {
+    if (typeof openSidebar === 'function') openSidebar();
+    setTimeout(function() {
+      if (typeof map !== 'undefined' && map.invalidateSize) map.invalidateSize();
+    }, 150);
+  }
+
+  if (ctx.view === 'listParcels') {
+    if (typeof switchTab === 'function') switchTab('listParcels');
+    if (typeof highlightListNav === 'function') highlightListNav();
+    finishRestore();
+    return;
+  }
+
+  if (ctx.view !== 'details') return;
+
+  var needsReload = !(typeof parcelLayer !== 'undefined' && parcelLayer) ||
+    (typeof isListParcelsOnMap === 'function' && isListParcelsOnMap() && ctx.hadParcelLayer);
+
+  if (needsReload && ctx.listItemSnapshot && typeof openSavedParcelFromList === 'function') {
+    openSavedParcelFromList(ctx.listItemSnapshot).then(function() {
+      if (ctx.fromList && typeof highlightListNav === 'function') highlightListNav();
+      finishRestore();
+    });
+    return;
+  }
+
+  if (needsReload && ctx.parcelSnapshot && typeof navigateToParcel === 'function') {
+    var p = ctx.parcelSnapshot;
+    navigateToParcel(p.sheet, p.plan_nbr, p.parcel_nbr, p.dist_code || '');
+    if (typeof switchTab === 'function') switchTab('details');
+    if (ctx.fromList && typeof highlightListNav === 'function') highlightListNav();
+    finishRestore();
+    return;
+  }
+
+  if (typeof switchTab === 'function') switchTab('details');
+  if (ctx.fromList && typeof highlightListNav === 'function') highlightListNav();
+  if (typeof parcelLayer !== 'undefined' && parcelLayer && typeof map !== 'undefined') {
+    map.fitBounds(parcelLayer.getBounds(), { padding: [50, 50] });
+  }
+  finishRestore();
+}
+
+function clearMapPrintSnapshot() {
+  var img = document.getElementById('mapPrintSnapshot');
+  var stage = document.getElementById('mapPrintStage');
+  if (img) {
+    img.classList.add('hidden');
+    img.removeAttribute('src');
+  }
+  if (stage) stage.classList.remove('has-snapshot');
+}
+
+function applyMapPrintSnapshot(dataUrl) {
+  var img = document.getElementById('mapPrintSnapshot');
+  var stage = document.getElementById('mapPrintStage');
+  if (!img) return Promise.resolve(false);
+  if (!dataUrl) {
+    clearMapPrintSnapshot();
+    return Promise.resolve(false);
+  }
+  return new Promise(function(resolve) {
+    var done = false;
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      resolve(ok);
+    }
+    img.onload = function() {
+      if (img.decode) {
+        img.decode().then(function() { finish(true); }).catch(function() { finish(true); });
+      } else {
+        finish(true);
+      }
+    };
+    img.onerror = function() {
+      clearMapPrintSnapshot();
+      finish(false);
+    };
+    img.src = dataUrl;
+    img.classList.remove('hidden');
+    if (stage) stage.classList.add('has-snapshot');
+    setTimeout(function() { finish(true); }, 3000);
+  });
+}
+
+function captureMapForPrint() {
+  if (typeof captureMapSnapshotForPrint === 'function') {
+    return captureMapSnapshotForPrint();
+  }
+  return Promise.resolve(null);
+}
+
+function closeMapPrintPreview() {
+  var modal = document.getElementById('mapPrintModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  document.body.classList.remove('map-print-preview-open');
+  document.body.classList.remove('map-printing');
+  document.body.classList.remove('map-print-no-snapshot');
+  if (typeof setMapPrintLayout === 'function') setMapPrintLayout(false);
+  clearMapPrintSnapshot();
+  restoreMapFromPrintPreview();
+  restoreViewAfterPrintPreview();
+}
+
+function openMapPrintPreview(triggerBtn) {
+  var parcels = getFilteredListParcels();
+  if (!parcels.length) return;
+  closeListParcelFilterDropdowns();
+
+  mapPrintReturnContext = { view: 'listParcels' };
+
+  var btn = triggerBtn || document.getElementById('printMapBtn');
+  setPrintButtonLoading(btn, true);
+
+  if (typeof closeSidebar === 'function') closeSidebar();
+
+  var loadPromise = typeof showAllListParcels === 'function'
+    ? showAllListParcels(parcels)
+    : Promise.resolve();
+
+  loadPromise.then(function() {
+    var titleEl = document.getElementById('listParcelsTitle');
+    var title = titleEl ? titleEl.textContent.trim() : 'Parcel list';
+    var metaParts = [new Date().toLocaleString(), parcels.length + (parcels.length === 1 ? ' parcel' : ' parcels')];
+    if (isListParcelOwnershipFilterActive()) {
+      metaParts.push(LIST_PARCEL_OWNERSHIP_FILTERS[listParcelOwnershipFilter]);
+    }
+    var searchQ = getListParcelSearchQuery();
+    if (searchQ) metaParts.push('Search: "' + searchQ + '"');
+    finishMapPrintPreview(btn, title, metaParts, parcels, false);
+  }).catch(function() {
+    setPrintButtonLoading(btn, false);
+  });
+}
+
+function openSingleParcelPrintPreview(triggerBtn) {
+  if (typeof currentParcel === 'undefined' || !currentParcel) return;
+
+  mapPrintReturnContext = {
+    view: 'details',
+    fromList: typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList(),
+    listItemSnapshot: typeof findListParcelForCurrentParcel === 'function'
+      ? findListParcelForCurrentParcel()
+      : null,
+    parcelSnapshot: Object.assign({}, currentParcel),
+    hadParcelLayer: !!(typeof parcelLayer !== 'undefined' && parcelLayer)
+  };
+
+  var btn = triggerBtn || document.getElementById('detailsPrintBtn');
+  setPrintButtonLoading(btn, true);
+
+  if (typeof closeSidebar === 'function') closeSidebar();
+
+  // Fit map to parcel BEFORE capturing. Cap the zoom so the DLS cadastral
+  // layer reliably has data (it returns "Map data not yet available" placeholders
+  // when zoomed in too far on a fresh view).
+  if (typeof parcelLayer !== 'undefined' && parcelLayer) {
+    map.fitBounds(parcelLayer.getBounds(), { padding: [60, 60], maxZoom: 18, animate: false });
+  }
+
+  var item = buildPrintItemFromCurrentParcel();
+  var titleEl = document.getElementById('parcelTitleDisplay');
+  var title = titleEl && titleEl.textContent.trim()
+    ? titleEl.textContent.trim()
+    : (typeof formatParcelRefLine === 'function' ? formatParcelRefLine(item) : 'Parcel');
+  var metaParts = [new Date().toLocaleString()];
+  var refLine = typeof formatParcelRefLine === 'function' ? formatParcelRefLine(item) : '';
+  if (refLine) metaParts.push(refLine);
+
+  buildMapPrintDetails();
+
+  var titleTarget = document.getElementById('mapPrintTitle');
+  var metaTarget = document.getElementById('mapPrintMeta');
+  if (titleTarget) titleTarget.textContent = title;
+  if (metaTarget) metaTarget.textContent = metaParts.join(' \u2022 ');
+
+  var sheet = document.getElementById('mapPrintSheet');
+  if (sheet) {
+    sheet.classList.add('single-parcel');
+    sheet.classList.remove('list-parcels');
+  }
+
+  var modal = document.getElementById('mapPrintModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+  document.body.classList.add('map-print-preview-open');
+
+  // Generate the server-side map image after a brief delay for map view to settle
+  setTimeout(function() {
+    generatePrintMapImage().then(function() {
+      setPrintButtonLoading(btn, false);
+    }).catch(function() {
+      setPrintButtonLoading(btn, false);
+    });
+  }, 300);
+}
+
+function generatePrintMapImage() {
+  var imgEl = document.getElementById('mapPrintSnapshot');
+  var stage = document.getElementById('mapPrintStage');
+  if (!imgEl || typeof map === 'undefined' || !map) return Promise.resolve();
+
+  imgEl.removeAttribute('src');
+  imgEl.classList.add('hidden');
+  if (stage) stage.classList.remove('has-snapshot');
+
+  var dlsPromise = typeof waitForDlsReady === 'function'
+    ? waitForDlsReady(7000)
+    : Promise.resolve();
+  var readyPromise = dlsPromise.then(function() {
+    return typeof waitForMapVisualReady === 'function'
+      ? waitForMapVisualReady(5000)
+      : Promise.resolve();
+  });
+
+  return readyPromise.then(function() {
+    var size = map.getSize();
+    if (!size || !size.x || !size.y) return;
+
+    var dataUrl = null;
+    try {
+      var canvas = buildMapCaptureCanvas(size, 2, true);
+      dataUrl = exportCaptureCanvas(canvas);
+    } catch (e) {
+      dataUrl = null;
+    }
+    if (!dataUrl) return;
+
+    return new Promise(function(resolve) {
+      imgEl.onload = function() {
+        imgEl.classList.remove('hidden');
+        if (stage) stage.classList.add('has-snapshot');
+        if (imgEl.decode) {
+          imgEl.decode().then(resolve).catch(resolve);
+        } else {
+          resolve();
+        }
+      };
+      imgEl.onerror = function() { resolve(); };
+      imgEl.src = dataUrl;
+      setTimeout(resolve, 5000);
+    });
+  });
+}
+
+function openParcelPrintPreview(triggerBtn) {
+  openSingleParcelPrintPreview(triggerBtn);
+}
+
+function doMapPrint() {
+  var btn = document.getElementById('mapPrintDoPrint');
+  var prevText = btn ? btn.textContent : 'Print';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Preparing…';
+  }
+
+  function finishButton() {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevText;
+    }
+  }
+
+  var imgEl = document.getElementById('mapPrintSnapshot');
+  var hasImage = imgEl && imgEl.src && !imgEl.classList.contains('hidden');
+
+  if (hasImage) {
+    document.body.classList.add('map-printing');
+    setTimeout(function() {
+      window.print();
+      finishButton();
+    }, 100);
+    return;
+  }
+
+  generatePrintMapImage().then(function() {
+    document.body.classList.add('map-printing');
+    setTimeout(function() {
+      window.print();
+      finishButton();
+    }, 100);
+  }).catch(function() {
+    document.body.classList.add('map-printing');
+    setTimeout(function() {
+      window.print();
+      finishButton();
+    }, 100);
+  });
+}
+
+if (!window._mapPrintBound) {
+  window._mapPrintBound = true;
+  window.addEventListener('beforeprint', function() {
+    if (typeof map !== 'undefined' && map.invalidateSize) {
+      map.invalidateSize({ animate: false, pan: false });
+    }
+  });
+  window.addEventListener('afterprint', function() {
+    document.body.classList.remove('map-printing');
+    document.body.classList.remove('map-print-no-snapshot');
+    clearMapPrintSnapshot();
+    if (typeof map !== 'undefined' && map.invalidateSize) {
+      setTimeout(function() { map.invalidateSize(); }, 150);
+    }
+  });
+}
+
 function renderParcelGridTable() {
   var tbody = document.getElementById('parcelGridBody');
   if (!tbody) return;
@@ -737,40 +1247,7 @@ function renderParcelGridTable() {
     return;
   }
   tbody.innerHTML = parcels.map(function(item, index) {
-    var block = typeof displayBlockCode === 'function'
-      ? displayBlockCode(item.block_code)
-      : normParcelGridVal(item.block_code);
-    var regNo = parcelGridRegDisplay(item);
-    var area = (item.area_sqm != null && item.area_sqm !== '' && typeof formatAreaSqm === 'function')
-      ? formatAreaSqm(item.area_sqm)
-      : '';
-    var share = typeof formatOwnershipDisplay === 'function'
-      ? formatOwnershipDisplay(item)
-      : '';
-    var value = typeof formatParcelValue === 'function'
-      ? formatParcelValue(item.parcel_value)
-      : '';
-    var shareClass = 'col-share';
-    if (share && typeof isFullOwnership === 'function') {
-      shareClass += isFullOwnership(item) ? ' col-share-full' : ' col-share-partial';
-    }
-    return (
-      '<tr class="parcel-grid-row" data-parcel-id="' + item.id + '">' +
-        parcelGridCell(String(index + 1), 'col-num') +
-        parcelGridCell(item.parcel_title, 'col-text') +
-        parcelGridCell(item.district) +
-        parcelGridCell(item.municipality) +
-        parcelGridCell(normParcelGridVal(item.sheet), 'col-cadastral') +
-        parcelGridCell(normParcelGridVal(item.plan_nbr), 'col-cadastral') +
-        parcelGridCell(block, 'col-cadastral') +
-        parcelGridCell(normParcelGridVal(item.parcel_nbr), 'col-cadastral') +
-        parcelGridCell(regNo, 'col-cadastral') +
-        parcelGridCell(area, 'col-cadastral') +
-        parcelGridCell(share, shareClass) +
-        parcelGridCell(item.location_note, 'col-text') +
-        parcelGridCell(value, 'col-value') +
-      '</tr>'
-    );
+    return buildParcelGridRowHTML(item, index, false);
   }).join('');
 }
 
@@ -974,6 +1451,25 @@ if (showParcelGridBtn) {
     openParcelGridModal();
   });
 }
+
+var printMapBtn = document.getElementById('printMapBtn');
+if (printMapBtn) {
+  printMapBtn.addEventListener('click', function() { openMapPrintPreview(printMapBtn); });
+}
+
+var detailsPrintBtn = document.getElementById('detailsPrintBtn');
+if (detailsPrintBtn) {
+  detailsPrintBtn.addEventListener('click', function() { openParcelPrintPreview(detailsPrintBtn); });
+}
+
+var mapPrintClose = document.getElementById('mapPrintClose');
+if (mapPrintClose) mapPrintClose.addEventListener('click', closeMapPrintPreview);
+
+var mapPrintCancel = document.getElementById('mapPrintCancel');
+if (mapPrintCancel) mapPrintCancel.addEventListener('click', closeMapPrintPreview);
+
+var mapPrintDoPrint = document.getElementById('mapPrintDoPrint');
+if (mapPrintDoPrint) mapPrintDoPrint.addEventListener('click', doMapPrint);
 
 var parcelGridPanelClose = document.getElementById('parcelGridPanelClose');
 if (parcelGridPanelClose) {
@@ -1189,8 +1685,9 @@ document.getElementById('backToListParcels').addEventListener('click', function(
 });
 
 document.getElementById('showAllParcelsBtn').addEventListener('click', function() {
-  if (!currentListParcels.length) return;
-  showAllListParcels(currentListParcels);
+  var parcels = getFilteredListParcels();
+  if (!parcels.length) return;
+  showAllListParcels(parcels);
 });
 
 (function initListParcelMapHover() {
