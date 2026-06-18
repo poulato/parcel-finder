@@ -338,8 +338,6 @@ async function openListParcels(listId, role, options) {
   document.getElementById('showAllParcelsBtn').style.display = 'none';
   var gridBtn = document.getElementById('showParcelGridBtn');
   if (gridBtn) gridBtn.style.display = 'none';
-  var printMapBtn = document.getElementById('printMapBtn');
-  if (printMapBtn) printMapBtn.style.display = 'none';
   currentListParcels = [];
 
   var detailMenu = document.querySelector('.list-detail-menu');
@@ -361,7 +359,6 @@ async function openListParcels(listId, role, options) {
     currentListParcels = parcels;
     document.getElementById('showAllParcelsBtn').style.display = '';
     if (gridBtn) gridBtn.style.display = '';
-    if (printMapBtn) printMapBtn.style.display = '';
     updateListParcelSearchUI(canEdit);
     renderListParcels(canEdit);
   } catch (err) {
@@ -791,14 +788,21 @@ function finishMapPrintPreview(btn, title, metaParts, parcels, singleParcel) {
     resetMapPrintDetailsPanel();
     buildMapPrintIndex(parcels);
   }
-  mountMapInPrintPreview();
   var modal = document.getElementById('mapPrintModal');
   if (modal) {
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
   }
   document.body.classList.add('map-print-preview-open');
-  setPrintButtonLoading(btn, false);
+
+  // Capture the live map into a static snapshot (reliable rendering in print).
+  setTimeout(function() {
+    generatePrintMapImage().then(function() {
+      setPrintButtonLoading(btn, false);
+    }).catch(function() {
+      setPrintButtonLoading(btn, false);
+    });
+  }, 300);
 }
 
 function resetMapPrintDetailsPanel() {
@@ -1013,7 +1017,11 @@ function openMapPrintPreview(triggerBtn) {
 
   if (typeof closeSidebar === 'function') closeSidebar();
 
-  var loadPromise = typeof showAllListParcels === 'function'
+  // Only load/fit the parcels onto the map if they aren't already shown,
+  // so we keep the user's current zoom/view when possible.
+  var alreadyShown = typeof listParcelsGroup !== 'undefined' && listParcelsGroup
+    && listParcelsGroup.getLayers && listParcelsGroup.getLayers().length > 0;
+  var loadPromise = (!alreadyShown && typeof showAllListParcels === 'function')
     ? showAllListParcels(parcels)
     : Promise.resolve();
 
@@ -1050,12 +1058,7 @@ function openSingleParcelPrintPreview(triggerBtn) {
 
   if (typeof closeSidebar === 'function') closeSidebar();
 
-  // Fit map to parcel BEFORE capturing. Cap the zoom so the DLS cadastral
-  // layer reliably has data (it returns "Map data not yet available" placeholders
-  // when zoomed in too far on a fresh view).
-  if (typeof parcelLayer !== 'undefined' && parcelLayer) {
-    map.fitBounds(parcelLayer.getBounds(), { padding: [60, 60], maxZoom: 18, animate: false });
-  }
+  // Capture exactly the current map view/zoom — do not re-fit or change zoom.
 
   var item = buildPrintItemFromCurrentParcel();
   var titleEl = document.getElementById('parcelTitleDisplay');
@@ -1105,10 +1108,22 @@ function generatePrintMapImage() {
   imgEl.classList.add('hidden');
   if (stage) stage.classList.remove('has-snapshot');
 
-  var dlsPromise = typeof waitForDlsReady === 'function'
-    ? waitForDlsReady(7000)
-    : Promise.resolve();
-  var readyPromise = dlsPromise.then(function() {
+  // The sidebar closing changes the map's container width. Tell Leaflet so it
+  // requests tiles for the full current viewport (otherwise the newly exposed
+  // area has no base tiles and renders blank in the snapshot).
+  if (map.invalidateSize) map.invalidateSize({ animate: false, pan: false });
+
+  var settlePromise = new Promise(function(r) { setTimeout(r, 200); });
+  var basePromise = settlePromise.then(function() {
+    return typeof waitForBaseTilesReady === 'function'
+      ? waitForBaseTilesReady(8000)
+      : Promise.resolve();
+  });
+  var readyPromise = basePromise.then(function() {
+    return typeof waitForDlsReady === 'function'
+      ? waitForDlsReady(7000)
+      : Promise.resolve();
+  }).then(function() {
     return typeof waitForMapVisualReady === 'function'
       ? waitForMapVisualReady(5000)
       : Promise.resolve();
@@ -1454,7 +1469,13 @@ if (showParcelGridBtn) {
 
 var printMapBtn = document.getElementById('printMapBtn');
 if (printMapBtn) {
-  printMapBtn.addEventListener('click', function() { openMapPrintPreview(printMapBtn); });
+  printMapBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var dd = document.getElementById('listDetailDropdown');
+    if (dd) dd.classList.add('hidden');
+    openMapPrintPreview(printMapBtn);
+  });
 }
 
 var detailsPrintBtn = document.getElementById('detailsPrintBtn');

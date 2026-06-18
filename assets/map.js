@@ -1532,11 +1532,14 @@ function drawMapPolygonsOnCanvas(ctx) {
 function drawMapTilesOnCanvas(ctx, container, cRect) {
   var tilePane = map.getPane('tilePane');
   if (tilePane) {
+    // Position each tile relative to the map container via its rendered
+    // bounding box. This accounts for the map pane's transform offset
+    // (L.DomUtil.getPosition alone is pane-relative and shifts the tiles).
     tilePane.querySelectorAll('img.leaflet-tile').forEach(function(tile) {
       if (!tile.complete || !tile.naturalWidth) return;
-      var pos = L.DomUtil.getPosition(tile);
+      var r = tile.getBoundingClientRect();
       try {
-        ctx.drawImage(tile, pos.x, pos.y, tile.offsetWidth, tile.offsetHeight);
+        ctx.drawImage(tile, r.left - cRect.left, r.top - cRect.top, r.width, r.height);
       } catch (e) { /* cross-origin */ }
     });
   }
@@ -1645,6 +1648,31 @@ function buildMapCaptureCanvasFromExport(bounds, size, scale) {
     drawMapPolygonsOnCanvas(ctx);
     ctx.restore();
     return exportCaptureCanvas(canvas);
+  });
+}
+
+function getActiveBaseLayer() {
+  if (typeof satellite !== 'undefined' && satellite && map.hasLayer(satellite)) return satellite;
+  if (typeof topoBase !== 'undefined' && topoBase && map.hasLayer(topoBase)) return topoBase;
+  return null;
+}
+
+function waitForBaseTilesReady(timeoutMs) {
+  return new Promise(function(resolve) {
+    var layer = getActiveBaseLayer();
+    if (!layer || !layer.on) { resolve(); return; }
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      if (layer.off) layer.off('load', onLoad);
+      resolve();
+    }
+    function onLoad() { setTimeout(finish, 150); }
+    layer.on('load', onLoad);
+    // Force a redraw so 'load' fires once all visible tiles are fetched.
+    try { if (layer.redraw) layer.redraw(); } catch (e) {}
+    setTimeout(finish, timeoutMs || 8000);
   });
 }
 
