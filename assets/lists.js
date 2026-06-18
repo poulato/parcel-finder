@@ -832,7 +832,7 @@ function buildMapPrintDetails() {
     '.saved-parcel-extra'
   ).forEach(function(el) { el.remove(); });
   var titleHeader = clone.querySelector('.parcel-title-header');
-  if (titleHeader && !titleHeader.textContent.trim()) titleHeader.remove();
+  if (titleHeader) titleHeader.remove();
   target.innerHTML = '';
   target.appendChild(clone);
 }
@@ -1491,6 +1491,16 @@ if (mapPrintCancel) mapPrintCancel.addEventListener('click', closeMapPrintPrevie
 
 var mapPrintDoPrint = document.getElementById('mapPrintDoPrint');
 if (mapPrintDoPrint) mapPrintDoPrint.addEventListener('click', doMapPrint);
+
+var mapPrintTitleEl = document.getElementById('mapPrintTitle');
+if (mapPrintTitleEl) {
+  mapPrintTitleEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      mapPrintTitleEl.blur();
+    }
+  });
+}
 
 var parcelGridPanelClose = document.getElementById('parcelGridPanelClose');
 if (parcelGridPanelClose) {

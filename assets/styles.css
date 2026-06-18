@@ -2370,6 +2370,26 @@ body.map-print-preview-open { overflow: hidden; }
   line-height: 1.2;
   color: #f1f5f9;
 }
+.map-print-title[contenteditable] {
+  cursor: text;
+  padding: 2px 8px;
+  margin: -2px -8px;
+  border-radius: 6px;
+  outline: 1px dashed rgba(148, 163, 184, 0.45);
+  transition: background 0.15s ease, outline-color 0.15s ease;
+}
+.map-print-title[contenteditable]:hover {
+  outline-color: rgba(148, 163, 184, 0.8);
+  background: rgba(148, 163, 184, 0.08);
+}
+.map-print-title[contenteditable]:focus {
+  outline: 1px solid #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+.map-print-title[contenteditable]:empty::before {
+  content: "Click to edit title";
+  color: #64748b;
+}
 .map-print-meta {
   margin: 4px 0 0;
   font-size: 12px;
@@ -2607,11 +2627,14 @@ body.map-print-preview-open { overflow: hidden; }
     page-break-inside: avoid;
     overflow: hidden;
   }
-  body.map-printing .map-print-sheet.single-parcel .map-print-sidebar-header {
-    display: none !important;
-  }
   body.map-printing .map-print-sidebar-header {
     margin-bottom: 4px;
+  }
+  body.map-printing .map-print-title[contenteditable] {
+    outline: none !important;
+    background: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
   body.map-printing .map-print-title {
     font-size: 14px;
