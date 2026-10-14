@@ -2373,7 +2373,7 @@ body.map-print-preview-open { overflow: hidden; }
 .map-print-title[contenteditable] {
   cursor: text;
   padding: 2px 8px;
-  margin: -2px -8px;
+  margin: 0 -8px 8px;
   border-radius: 6px;
   outline: 1px dashed rgba(148, 163, 184, 0.45);
   transition: background 0.15s ease, outline-color 0.15s ease;
@@ -2634,13 +2634,14 @@ body.map-print-preview-open { overflow: hidden; }
     outline: none !important;
     background: none !important;
     padding: 0 !important;
-    margin: 0 !important;
+    margin: 0 0 6px !important;
   }
   body.map-printing .map-print-title {
     font-size: 14px;
   }
   body.map-printing .map-print-meta {
     font-size: 9px;
+    margin-top: 6px;
   }
   body.map-printing .map-print-sidebar-scroll {
     overflow: hidden;

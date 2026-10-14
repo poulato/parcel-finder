@@ -795,14 +795,21 @@ function finishMapPrintPreview(btn, title, metaParts, parcels, singleParcel) {
   }
   document.body.classList.add('map-print-preview-open');
 
-  // Capture the live map into a static snapshot (reliable rendering in print).
+  showLiveMapInPrintPreview(btn);
+}
+
+// Show the live, interactive map inside the print preview stage so the user can
+// pan/zoom to position it exactly how they want. A static snapshot is captured
+// only when they hit Print (reliable rendering in the actual print output).
+function showLiveMapInPrintPreview(btn) {
+  clearMapPrintSnapshot();
+  mountMapInPrintPreview();
   setTimeout(function() {
-    generatePrintMapImage().then(function() {
-      setPrintButtonLoading(btn, false);
-    }).catch(function() {
-      setPrintButtonLoading(btn, false);
-    });
-  }, 300);
+    if (typeof map !== 'undefined' && map.invalidateSize) {
+      map.invalidateSize({ animate: false, pan: false });
+    }
+    setPrintButtonLoading(btn, false);
+  }, 250);
 }
 
 function resetMapPrintDetailsPanel() {
@@ -833,8 +840,66 @@ function buildMapPrintDetails() {
   ).forEach(function(el) { el.remove(); });
   var titleHeader = clone.querySelector('.parcel-title-header');
   if (titleHeader) titleHeader.remove();
+  var titleSub = clone.querySelector('#parcelTitleSub');
+  if (titleSub) titleSub.remove();
+
+  // Prefer saved parcel data so Area/Ownership/etc. always print correctly,
+  // even if the live details UI still shows an "Add …" placeholder.
+  var item = typeof buildPrintItemFromCurrentParcel === 'function'
+    ? buildPrintItemFromCurrentParcel()
+    : null;
+  fillMapPrintMetaValue(clone, '#parcelAreaValue', '#parcelAreaRow',
+    item && typeof formatAreaSqm === 'function' ? formatAreaSqm(item.area_sqm) : '');
+  fillMapPrintMetaValue(clone, '#parcelOwnershipValue', '#parcelOwnershipRow',
+    item && typeof formatOwnershipDisplay === 'function' ? formatOwnershipDisplay(item) : '');
+  fillMapPrintMetaValue(clone, '#parcelLocationValue', '#parcelLocationRow',
+    item && item.location_note ? String(item.location_note) : '');
+  fillMapPrintMetaValue(clone, '#parcelValueDisplay', '#parcelValueRow',
+    item && typeof formatParcelValue === 'function' ? formatParcelValue(item.parcel_value) : '');
+
+  // Keep Area near the top (after Sheet / Plan) so it isn't lost at the bottom.
+  promoteMapPrintRow(clone, '#parcelAreaRow', 'Sheet / Plan');
+  promoteMapPrintRow(clone, '#parcelOwnershipRow', 'Area');
+
   target.innerHTML = '';
   target.appendChild(clone);
+}
+
+function fillMapPrintMetaValue(root, valueSel, rowSel, preferred) {
+  var valueEl = root.querySelector(valueSel);
+  var rowEl = root.querySelector(rowSel);
+  if (!valueEl || !rowEl) return;
+  var text = preferred && String(preferred).trim() ? String(preferred).trim() : '';
+  if (!text) {
+    var current = (valueEl.textContent || '').trim();
+    if (current && !/^Add\b/i.test(current) && current !== '\u2014' && current !== '-' && current !== '\u2013') {
+      text = current;
+    }
+  }
+  if (text) {
+    valueEl.textContent = text;
+    valueEl.classList.remove('parcel-area-placeholder');
+  } else {
+    rowEl.remove();
+  }
+}
+
+function promoteMapPrintRow(root, rowSel, afterLabel) {
+  var row = root.querySelector(rowSel);
+  if (!row || !row.parentNode) return;
+  var parent = row.parentNode;
+  var kids = parent.children;
+  var afterEl = null;
+  for (var i = 0; i < kids.length; i++) {
+    var label = kids[i].querySelector && kids[i].querySelector('.label');
+    if (label && label.textContent.replace(/:$/, '').trim() === afterLabel) {
+      afterEl = kids[i];
+      break;
+    }
+  }
+  if (afterEl && afterEl.nextSibling !== row) {
+    parent.insertBefore(row, afterEl.nextSibling);
+  }
 }
 
 function buildMapPrintIndex(parcels) {
@@ -850,6 +915,10 @@ function buildMapPrintIndex(parcels) {
       ? formatOwnershipDisplay(item)
       : '';
     var sharePart = share ? ' \u2022 ' + escapeHTML(share) : '';
+    var area = (item.area_sqm != null && item.area_sqm !== '' && typeof formatAreaSqm === 'function')
+      ? formatAreaSqm(item.area_sqm)
+      : '';
+    var areaPart = area ? ' \u2022 ' + escapeHTML(area) : '';
     var note = item.location_note
       ? ' \u2022 ' + escapeHTML(notePreviewSingleLine(item.location_note))
       : '';
@@ -857,7 +926,7 @@ function buildMapPrintIndex(parcels) {
       '<li><span class="map-print-index-num">' + (index + 1) + '.</span> ' +
       title + escapeHTML(refLine) +
       (loc ? ' \u2022 ' + loc : '') +
-      sharePart + note +
+      areaPart + sharePart + note +
       '</li>'
     );
   }).join('');
@@ -1066,8 +1135,6 @@ function openSingleParcelPrintPreview(triggerBtn) {
     ? titleEl.textContent.trim()
     : (typeof formatParcelRefLine === 'function' ? formatParcelRefLine(item) : 'Parcel');
   var metaParts = [new Date().toLocaleString()];
-  var refLine = typeof formatParcelRefLine === 'function' ? formatParcelRefLine(item) : '';
-  if (refLine) metaParts.push(refLine);
 
   buildMapPrintDetails();
 
@@ -1089,14 +1156,7 @@ function openSingleParcelPrintPreview(triggerBtn) {
   }
   document.body.classList.add('map-print-preview-open');
 
-  // Generate the server-side map image after a brief delay for map view to settle
-  setTimeout(function() {
-    generatePrintMapImage().then(function() {
-      setPrintButtonLoading(btn, false);
-    }).catch(function() {
-      setPrintButtonLoading(btn, false);
-    });
-  }, 300);
+  showLiveMapInPrintPreview(btn);
 }
 
 function generatePrintMapImage() {
@@ -1178,31 +1238,20 @@ function doMapPrint() {
     }
   }
 
-  var imgEl = document.getElementById('mapPrintSnapshot');
-  var hasImage = imgEl && imgEl.src && !imgEl.classList.contains('hidden');
-
-  if (hasImage) {
+  function startPrint() {
+    var imgEl = document.getElementById('mapPrintSnapshot');
+    var hasImage = imgEl && imgEl.src && !imgEl.classList.contains('hidden');
+    document.body.classList.toggle('map-print-no-snapshot', !hasImage);
     document.body.classList.add('map-printing');
     setTimeout(function() {
       window.print();
       finishButton();
     }, 100);
-    return;
   }
 
-  generatePrintMapImage().then(function() {
-    document.body.classList.add('map-printing');
-    setTimeout(function() {
-      window.print();
-      finishButton();
-    }, 100);
-  }).catch(function() {
-    document.body.classList.add('map-printing');
-    setTimeout(function() {
-      window.print();
-      finishButton();
-    }, 100);
-  });
+  // Always capture a fresh snapshot from the current (possibly repositioned)
+  // map view so what prints matches what the user positioned in the preview.
+  generatePrintMapImage().then(startPrint).catch(startPrint);
 }
 
 if (!window._mapPrintBound) {
