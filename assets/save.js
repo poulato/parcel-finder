@@ -447,24 +447,30 @@ function renderParcelAreaField() {
 
   var record = getActiveSavedParcelRecord();
   var canEdit = record && canEditSavedParcelRecord(record);
+  // Official DLS parcel extent (m²) from the cadastral feature.
+  var dlsArea = (typeof currentParcel !== 'undefined' && currentParcel && currentParcel.area_sqm != null
+    && currentParcel.area_sqm !== '')
+    ? currentParcel.area_sqm
+    : null;
 
   if (editor) editor.classList.add('hidden');
   if (valueEl) valueEl.style.display = '';
 
-  if (!record) {
-    valueEl.textContent = '\u2014';
-    if (editBtn) editBtn.classList.add('hidden');
-    return;
-  }
+  var savedArea = record && record.area_sqm != null && record.area_sqm !== ''
+    ? record.area_sqm
+    : null;
+  var areaVal = savedArea != null ? savedArea : dlsArea;
 
-  if (record.area_sqm != null && record.area_sqm !== '') {
-    valueEl.textContent = formatAreaSqm(record.area_sqm);
+  if (areaVal != null) {
+    valueEl.textContent = formatAreaSqm(areaVal);
+    valueEl.classList.remove('parcel-area-placeholder');
+  } else if (canEdit) {
+    valueEl.textContent = 'Add area';
+    valueEl.classList.add('parcel-area-placeholder');
   } else {
-    valueEl.textContent = canEdit ? 'Add area' : '\u2014';
-    if (canEdit) valueEl.classList.add('parcel-area-placeholder');
-    else valueEl.classList.remove('parcel-area-placeholder');
+    valueEl.textContent = '\u2014';
+    valueEl.classList.remove('parcel-area-placeholder');
   }
-  if (record.area_sqm != null && record.area_sqm !== '') valueEl.classList.remove('parcel-area-placeholder');
 
   if (editBtn) {
     if (canEdit) editBtn.classList.remove('hidden');

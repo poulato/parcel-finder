@@ -755,10 +755,7 @@ function setPrintButtonLoading(btn, loading) {
 }
 
 function updateDetailsPrintButton() {
-  var btn = document.getElementById('detailsPrintBtn');
-  if (!btn) return;
-  var show = typeof currentParcel !== 'undefined' && !!currentParcel;
-  btn.classList.toggle('hidden', !show);
+  // Print lives in #detailsActions with Save/Share; no separate header toggle.
 }
 
 function buildPrintItemFromCurrentParcel() {
@@ -822,6 +819,36 @@ function resetMapPrintDetailsPanel() {
   if (index) index.classList.remove('hidden');
 }
 
+function resolvePrintAreaText(item) {
+  if (typeof formatAreaSqm !== 'function') return '';
+  // 1) Saved / list override
+  if (item && item.area_sqm != null && item.area_sqm !== '') {
+    var saved = formatAreaSqm(item.area_sqm);
+    if (saved) return saved;
+  }
+  if (typeof parcelSavedRecords !== 'undefined' && parcelSavedRecords.length) {
+    for (var i = 0; i < parcelSavedRecords.length; i++) {
+      var savedArea = formatAreaSqm(parcelSavedRecords[i].area_sqm);
+      if (savedArea) return savedArea;
+    }
+  }
+  // 2) Official DLS area from the loaded cadastral feature (SHAPE.STArea())
+  if (typeof currentParcel !== 'undefined' && currentParcel && currentParcel.area_sqm != null
+      && currentParcel.area_sqm !== '') {
+    var dls = formatAreaSqm(currentParcel.area_sqm);
+    if (dls) return dls;
+  }
+  // 3) Live details DOM
+  var domEl = document.getElementById('parcelAreaValue');
+  if (domEl) {
+    var domText = (domEl.textContent || '').trim();
+    if (domText && !/^Add\b/i.test(domText) && domText !== '\u2014' && domText !== '-' && domText !== '\u2013') {
+      return domText;
+    }
+  }
+  return '';
+}
+
 function buildMapPrintDetails() {
   var source = document.getElementById('detailsContent');
   var target = document.getElementById('mapPrintDetails');
@@ -843,13 +870,14 @@ function buildMapPrintDetails() {
   var titleSub = clone.querySelector('#parcelTitleSub');
   if (titleSub) titleSub.remove();
 
-  // Prefer saved parcel data so Area/Ownership/etc. always print correctly,
-  // even if the live details UI still shows an "Add …" placeholder.
   var item = typeof buildPrintItemFromCurrentParcel === 'function'
     ? buildPrintItemFromCurrentParcel()
     : null;
-  fillMapPrintMetaValue(clone, '#parcelAreaValue', '#parcelAreaRow',
-    item && typeof formatAreaSqm === 'function' ? formatAreaSqm(item.area_sqm) : '');
+
+  // Area MUST show for the selected parcel — saved value, DOM, or geometry.
+  var areaText = resolvePrintAreaText(item);
+  ensureMapPrintAreaRow(clone, areaText);
+
   fillMapPrintMetaValue(clone, '#parcelOwnershipValue', '#parcelOwnershipRow',
     item && typeof formatOwnershipDisplay === 'function' ? formatOwnershipDisplay(item) : '');
   fillMapPrintMetaValue(clone, '#parcelLocationValue', '#parcelLocationRow',
@@ -857,12 +885,39 @@ function buildMapPrintDetails() {
   fillMapPrintMetaValue(clone, '#parcelValueDisplay', '#parcelValueRow',
     item && typeof formatParcelValue === 'function' ? formatParcelValue(item.parcel_value) : '');
 
-  // Keep Area near the top (after Sheet / Plan) so it isn't lost at the bottom.
+  // Keep Area near the top (after Sheet / Plan).
   promoteMapPrintRow(clone, '#parcelAreaRow', 'Sheet / Plan');
   promoteMapPrintRow(clone, '#parcelOwnershipRow', 'Area');
 
   target.innerHTML = '';
   target.appendChild(clone);
+}
+
+function ensureMapPrintAreaRow(root, areaText) {
+  var rowEl = root.querySelector('#parcelAreaRow');
+  var valueEl = root.querySelector('#parcelAreaValue');
+  if (!areaText) {
+    if (rowEl) rowEl.remove();
+    return;
+  }
+  if (!rowEl) {
+    rowEl = document.createElement('div');
+    rowEl.id = 'parcelAreaRow';
+    rowEl.className = 'parcel-area-row';
+    rowEl.innerHTML = '<span class="label">Area:</span> <span class="value" id="parcelAreaValue"></span>';
+    valueEl = rowEl.querySelector('#parcelAreaValue');
+    var parent = root.id === 'detailsContent' ? root : (root.querySelector('#detailsContent') || root);
+    parent.appendChild(rowEl);
+  }
+  if (!valueEl) {
+    valueEl = document.createElement('span');
+    valueEl.className = 'value';
+    valueEl.id = 'parcelAreaValue';
+    rowEl.appendChild(valueEl);
+  }
+  valueEl.textContent = areaText;
+  valueEl.classList.remove('parcel-area-placeholder');
+  valueEl.style.display = '';
 }
 
 function fillMapPrintMetaValue(root, valueSel, rowSel, preferred) {
@@ -1527,10 +1582,6 @@ if (printMapBtn) {
   });
 }
 
-var detailsPrintBtn = document.getElementById('detailsPrintBtn');
-if (detailsPrintBtn) {
-  detailsPrintBtn.addEventListener('click', function() { openParcelPrintPreview(detailsPrintBtn); });
-}
 
 var mapPrintClose = document.getElementById('mapPrintClose');
 if (mapPrintClose) mapPrintClose.addEventListener('click', closeMapPrintPreview);

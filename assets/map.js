@@ -89,7 +89,17 @@ function dlsQuery(layerId, params) {
     });
 }
 
-var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR,SBPI_ID_NO';
+// SHAPE.STArea() is the official DLS parcel extent in m² ("Parcel Extend").
+var PARCEL_FIELDS = 'DIST_CODE,VIL_CODE,BLCK_CODE,PARCEL_NBR,SHEET,PLAN_NBR,SBPI_ID_NO,SHAPE.STArea()';
+
+function dlsAreaFromAttrs(attrs) {
+  if (!attrs) return null;
+  var raw = attrs['SHAPE.STArea()'];
+  if (raw == null || raw === '') raw = attrs.SHAPE_STArea;
+  if (raw == null || raw === '') return null;
+  var n = Number(raw);
+  return isNaN(n) || n < 0 ? null : n;
+}
 var municipalityCache = [];
 
 function escapeWhereStr(s) {
@@ -619,6 +629,12 @@ function buildSearchDetailsActionsHTML() {
         '</button>' +
         '<span class="action-label">Share</span>' +
       '</div>' +
+      '<div class="action-item">' +
+        '<button id="detailsPrintBtn" type="button" title="Preview map for printing">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>' +
+        '</button>' +
+        '<span class="action-label">Print</span>' +
+      '</div>' +
     '</div>';
 }
 
@@ -814,6 +830,7 @@ function showParcel(feature, extra, outlineColor, meta) {
   var clean = function(v) { return String(v == null ? '' : v).replace(/\.0$/, ''); };
   var parcelCentroid = centroid(feature.geometry.rings);
   var regFields = formatRegistrationMeta(meta.registration_no, meta.registration_block);
+  var dlsArea = dlsAreaFromAttrs(attrs);
   currentParcel = {
     sheet: clean(attrs.SHEET),
     plan_nbr: clean(attrs.PLAN_NBR),
@@ -828,6 +845,7 @@ function showParcel(feature, extra, outlineColor, meta) {
     postal_code: extra.postal_code || '',
     registration_no: regFields.registration_no,
     registration_block: regFields.registration_block,
+    area_sqm: dlsArea,
     centroid_lat: parcelCentroid[0],
     centroid_lng: parcelCentroid[1],
     geometry_rings: JSON.stringify(feature.geometry.rings)
@@ -841,7 +859,7 @@ function showParcel(feature, extra, outlineColor, meta) {
   }).addTo(map);
 
   var html = buildParcelHTML(attrs, extra, {
-    showActions: !outlineColor && !(typeof isParcelDetailsFromList === 'function' && isParcelDetailsFromList()),
+    showActions: !outlineColor,
     registrationNo: currentParcel.registration_no,
     registrationBlock: currentParcel.registration_block,
     parcelNbr: currentParcel.parcel_nbr
@@ -1354,6 +1372,12 @@ function shareCurrentParcel() {
     }
     if (e.target.closest('#detailsShareBtn')) {
       shareCurrentParcel();
+      return;
+    }
+    if (e.target.closest('#detailsPrintBtn')) {
+      if (typeof openParcelPrintPreview === 'function') {
+        openParcelPrintPreview(e.target.closest('#detailsPrintBtn'));
+      }
     }
   });
 })();
@@ -1380,6 +1404,7 @@ async function prepareParcelFromListItem(item) {
     var extra = await enrich(center[0], center[1]);
     var regMeta = await Promise.resolve(applyRegistrationMeta(registrationMetaFromItem(item), attrs));
     var clean = norm;
+    var dlsArea = dlsAreaFromAttrs(attrs);
     currentParcel = {
       sheet: clean(attrs.SHEET),
       plan_nbr: clean(attrs.PLAN_NBR),
@@ -1394,6 +1419,7 @@ async function prepareParcelFromListItem(item) {
       postal_code: extra.postal_code || '',
       registration_no: regMeta.registration_no || null,
       registration_block: regMeta.registration_block || null,
+      area_sqm: (item.area_sqm != null && item.area_sqm !== '') ? item.area_sqm : dlsArea,
       centroid_lat: center[0],
       centroid_lng: center[1],
       geometry_rings: JSON.stringify(feature.geometry.rings)
